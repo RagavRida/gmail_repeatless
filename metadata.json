@@ -1,0 +1,6 @@
+{
+  "name": "AI Gmail Intelligence Platform",
+  "description": "An AI-powered Gmail intelligence platform with inbox summary, thread view, AI chat agent, auto-compose, and newsletter digest.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

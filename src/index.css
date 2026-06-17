@@ -1,0 +1,61 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg-dark: #0D0F12;
+  --color-surface-dark: #161920;
+  --color-border-dark: #252830;
+  --color-indigo-accent: #6366F1;
+  --color-cyan-accent: #22D3EE;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+/* Custom styles and animations */
+@keyframes ai-pulse-border {
+  0% {
+    background-image: linear-gradient(to bottom, #6366F1, #6366F1);
+    box-shadow: 2px 0 8px rgba(99, 102, 241, 0.3);
+  }
+  50% {
+    background-image: linear-gradient(to bottom, #6366F1, #22D3EE);
+    box-shadow: 2px 0 16px rgba(34, 211, 238, 0.5);
+  }
+  100% {
+    background-image: linear-gradient(to bottom, #6366F1, #22D3EE);
+    box-shadow: none;
+  }
+}
+
+.ai-pulse-bar {
+  /* This creates a 3px left border indicator that pulses once of gradient */
+  position: relative;
+}
+.ai-pulse-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+  background-image: linear-gradient(to bottom, #6366F1, #22D3EE);
+  animation: ai-pulse-border 1.5s ease-in-out 1;
+  border-radius: 2px 0 0 2px;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0D0F12;
+}
+::-webkit-scrollbar-thumb {
+  background: #252830;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #6366F1;
+}
