@@ -6,6 +6,7 @@ interface InboxViewProps {
   emails: Email[];
   setEmails: React.Dispatch<React.SetStateAction<Email[]>>;
   onComposeReply: (email: Email) => void;
+  isAuthenticated?: boolean;
 }
 
 export function getCategoryStyles(category: EmailCategory) {
@@ -27,7 +28,7 @@ export function getCategoryStyles(category: EmailCategory) {
   }
 }
 
-export default function InboxView({ emails, setEmails, onComposeReply }: InboxViewProps) {
+export default function InboxView({ emails, setEmails, onComposeReply, isAuthenticated }: InboxViewProps) {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(emails[0] || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [summaryExpanded, setSummaryExpanded] = useState(true);
@@ -88,6 +89,15 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
       >
         {/* Header Search Utility and Category Shortcuts */}
         <div className="p-4 border-b border-[#252830] flex flex-col gap-3 shrink-0">
+          {/* Demo data banner */}
+          {!isAuthenticated && (
+            <div className="bg-gradient-to-r from-[#6366F1]/15 to-[#22D3EE]/15 border border-[#6366F1]/30 rounded-lg px-4 py-2.5 flex items-center gap-3">
+              <Sparkles size={14} className="text-[#6366F1] shrink-0" />
+              <p className="text-xs text-gray-300">
+                <span className="text-[#6366F1] font-semibold">Sample Data</span> — Connect your Gmail from the sidebar to see your real emails with AI categorization.
+              </p>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-sans font-semibold tracking-tight text-white flex items-center gap-2">
               Inbox

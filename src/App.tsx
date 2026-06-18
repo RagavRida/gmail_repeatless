@@ -137,7 +137,8 @@ export default function App() {
           <InboxView 
             emails={emails} 
             setEmails={setEmails}
-            onComposeReply={handleComposeReplyWithAI} 
+            onComposeReply={handleComposeReplyWithAI}
+            isAuthenticated={isAuthenticated === true}
           />
         )}
         
