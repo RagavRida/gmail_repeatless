@@ -11,6 +11,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { config, validateConfig } from './src/config/index.js';
 import { setupSession } from './src/auth/session.js';
@@ -169,16 +170,132 @@ app.post('/api/send', requireAuth, async (req, res, next) => {
 // STATIC FRONTEND
 // ================================================================
 
-// Serve Vite-built frontend from dist/
+// Serve Vite-built frontend from dist/ (local dev) or landing page (Render)
 const distPath = path.join(__dirname, '..', 'dist');
-app.use(express.static(distPath));
+const distExists = fs.existsSync(path.join(distPath, 'index.html'));
+
+if (distExists) {
+  app.use(express.static(distPath));
+}
 
 // SPA fallback — serve index.html for all non-API routes
 app.get('*', (req, res) => {
   if (req.path.startsWith('/api')) {
     return res.status(404).json({ error: 'API endpoint not found' });
   }
-  res.sendFile(path.join(distPath, 'index.html'));
+
+  if (distExists) {
+    return res.sendFile(path.join(distPath, 'index.html'));
+  }
+
+  // Backend-only deployment (Render) — serve a styled landing page
+  const frontendUrl = process.env.FRONTEND_URL || 'https://gmailrepeatless.vercel.app';
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gmail Repeatless — API Server</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0a0c10;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .card {
+      background: linear-gradient(145deg, #111319, #161920);
+      border: 1px solid #252830;
+      border-radius: 16px;
+      padding: 48px;
+      max-width: 520px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+    }
+    .emoji { font-size: 48px; margin-bottom: 16px; }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #6366F1, #22D3EE);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 8px;
+    }
+    .subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 32px; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #1a1f2e;
+      border: 1px solid #22D3EE33;
+      border-radius: 100px;
+      padding: 8px 20px;
+      font-size: 13px;
+      color: #22D3EE;
+      margin-bottom: 24px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      background: #22D3EE;
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    .btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #6366F1, #4F46E5);
+      color: white;
+      text-decoration: none;
+      padding: 12px 32px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(99,102,241,0.4);
+    }
+    .info {
+      margin-top: 32px;
+      padding-top: 24px;
+      border-top: 1px solid #252830;
+      font-size: 12px;
+      color: #64748b;
+    }
+    .info code {
+      background: #1a1f2e;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="emoji">📧</div>
+    <h1>Gmail Repeatless</h1>
+    <p class="subtitle">AI-Powered Email Intelligence Platform</p>
+    <div class="status">
+      <span class="dot"></span>
+      API Server Online
+    </div>
+    <br><br>
+    <a href="${frontendUrl}" class="btn">Open App →</a>
+    <div class="info">
+      <p>Backend API: <code>${req.protocol}://${req.get('host')}/api</code></p>
+      <p style="margin-top:4px">Powered by Gemini 2.5 Flash + NVIDIA NIM</p>
+    </div>
+  </div>
+</body>
+</html>`);
 });
 
 // ================================================================
