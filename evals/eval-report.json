@@ -1,0 +1,139 @@
+{
+  "timestamp": "2026-06-18T18:45:49.257Z",
+  "mode": "unit",
+  "models": {
+    "gemini": "gemini-2.5-flash",
+    "nim": "meta/llama-3.1-8b-instruct",
+    "nimAvailable": true
+  },
+  "totalTimeSeconds": 3.1,
+  "overallGrade": "A",
+  "suites": {
+    "categorization": {
+      "suite": "categorization",
+      "total": 12,
+      "correct": 12,
+      "accuracy": 100,
+      "avgLatencyMs": 262,
+      "results": [
+        {
+          "id": "cat-1",
+          "subject": "[Urgent] API Overages & Q3 Scaling Plan",
+          "expected": "work_professional",
+          "predicted": "work_professional",
+          "correct": true,
+          "latency": 421,
+          "rawOutput": "work_professional"
+        },
+        {
+          "id": "cat-2",
+          "subject": "Update on your application - Senior Staff Product Designer",
+          "expected": "job_recruitment",
+          "predicted": "job_recruitment",
+          "correct": true,
+          "latency": 241,
+          "rawOutput": "job_recruitment"
+        },
+        {
+          "id": "cat-3",
+          "subject": "Re: Cabin trip next month?",
+          "expected": "personal",
+          "predicted": "personal",
+          "correct": true,
+          "latency": 265,
+          "rawOutput": "personal"
+        },
+        {
+          "id": "cat-4",
+          "subject": "Import AI #354: The Frontier of Autonomous Agents",
+          "expected": "newsletter",
+          "predicted": "newsletter",
+          "correct": true,
+          "latency": 221,
+          "rawOutput": "newsletter"
+        },
+        {
+          "id": "cat-5",
+          "subject": "AWS Invoice Available - May 2026",
+          "expected": "finance",
+          "predicted": "finance",
+          "correct": true,
+          "latency": 219,
+          "rawOutput": "finance"
+        },
+        {
+          "id": "cat-6",
+          "subject": "Security Alert: Axios CVE-2026-1182",
+          "expected": "notifications",
+          "predicted": "notifications",
+          "correct": true,
+          "latency": 244,
+          "rawOutput": "notifications"
+        },
+        {
+          "id": "cat-7",
+          "subject": "TLDR Tech: Apple's M4 Neural Engine, Google's Gemma 3",
+          "expected": "newsletter",
+          "predicted": "newsletter",
+          "correct": true,
+          "latency": 285,
+          "rawOutput": "newsletter"
+        },
+        {
+          "id": "cat-8",
+          "subject": "Weekly Engineering Sprint Summary",
+          "expected": "work_professional",
+          "predicted": "work_professional",
+          "correct": true,
+          "latency": 249,
+          "rawOutput": "work_professional"
+        },
+        {
+          "id": "cat-9",
+          "subject": "Your OTP for login: 847291",
+          "expected": "notifications",
+          "predicted": "notifications",
+          "correct": true,
+          "latency": 241,
+          "rawOutput": "notifications"
+        },
+        {
+          "id": "cat-10",
+          "subject": "Interview Invitation - AI Research Engineer at DeepMind",
+          "expected": "job_recruitment",
+          "predicted": "job_recruitment",
+          "correct": true,
+          "latency": 242,
+          "rawOutput": "job_recruitment"
+        },
+        {
+          "id": "cat-11",
+          "subject": "Payment Received - Invoice #INV-2026-0542",
+          "expected": "finance",
+          "predicted": "finance",
+          "correct": true,
+          "latency": 245,
+          "rawOutput": "finance"
+        },
+        {
+          "id": "cat-12",
+          "subject": "Hey, are you free for coffee Saturday?",
+          "expected": "personal",
+          "predicted": "personal",
+          "correct": true,
+          "latency": 269,
+          "rawOutput": "personal"
+        }
+      ],
+      "confusionMatrix": {
+        "work_professional → work_professional": 2,
+        "job_recruitment → job_recruitment": 2,
+        "personal → personal": 2,
+        "newsletter → newsletter": 2,
+        "finance → finance": 2,
+        "notifications → notifications": 2
+      },
+      "grade": "A"
+    }
+  }
+}

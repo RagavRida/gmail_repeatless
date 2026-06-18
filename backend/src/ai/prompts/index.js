@@ -30,29 +30,85 @@ Thread Summary:`.trim(),
   // CATEGORIZATION
   // ============================================================
   categorize: (subject, from, snippet) => `
-Classify this email into exactly ONE category. Respond with ONLY the category name (one word), nothing else.
+You are a deterministic email classifier.
 
-Categories:
-- newsletter — Subscription content, digests, blogs, tech news, product updates from companies. Examples: Substack posts, TLDR newsletter, Product Hunt digest, Medium recommendations, company blogs, marketing emails from SaaS products.
-- job_recruitment — Job applications, offers, rejections, interview scheduling, recruiter outreach. Examples: "Your application to X", LinkedIn job alerts, "Interview confirmation", offer letters.
-- finance — Money-related: invoices, receipts, bank alerts, payment confirmations, billing, subscriptions charges. Examples: Razorpay receipts, bank OTPs about transactions, "Payment received", Stripe invoices, credit card statements.
-- notifications — Automated system alerts: OTPs, verification codes, login alerts, deployment status, CI/CD, GitHub notifications, app notifications. Examples: "Your OTP is", "New sign-in detected", GitHub PR notifications, Vercel deployment status, Google security alerts.
-- personal — Emails from individual people (not companies/services) about non-work topics. Friends, family, personal acquaintances, casual conversations, social plans. Look for: sender is a personal email (gmail.com, yahoo.com, outlook.com, hotmail.com), informal/casual tone, non-business topics like travel, food, events, personal life updates, birthday wishes, congratulations, sharing links casually, asking "how are you?".
-- work_professional — Work/project discussions, team communication, meeting invites, client emails, professional collaboration, company-internal communication. Examples: Google Calendar invites, Slack notifications about work channels, project updates from colleagues, client communications. Look for: corporate domain senders, formal tone, project/task references.
+Valid categories:
+job_recruitment
+work_professional
+notifications
+newsletter
+finance
+personal
+uncategorized
+
+Definitions:
+job_recruitment:
+Hiring, interviews, recruiters, applications.
+
+work_professional:
+Projects, meetings, clients, team communication.
+
+notifications:
+OTP, alerts, account activity, security messages.
+
+newsletter:
+Marketing, digests, subscriptions, promotions.
+
+finance:
+Invoices, receipts, payments, billing.
+
+personal:
+Friends, family, personal conversations. Look for gmail, yahoo, outlook, casual tone.
+
+uncategorized:
+Anything unclear.
 
 Rules:
-- Marketing emails from companies → newsletter (NOT notifications)
-- OTP/verification codes → notifications (NOT finance)  
-- Payment receipts → finance (NOT notifications)
-- GitHub/deployment alerts → notifications (NOT work_professional)
-- Email from a person (gmail/yahoo/outlook) with casual tone about non-work topics → personal (NOT work_professional)
-- Email from a person about projects, deadlines, work tasks → work_professional (NOT personal)
-- If truly unclear → uncategorized
+- Return EXACTLY one category.
+- Return ONLY the category.
+- No explanations.
+- No punctuation.
+- If confidence < 70%, return uncategorized.
+- Subject is most important.
+- Sender domain is second most important.
+- Snippet is third most important.
 
-Email:
+Priority Rules:
+1. OTP/security emails → notifications
+2. Interview/hiring emails → job_recruitment
+3. Invoice/payment emails → finance
+4. Promotions/digests → newsletter
+5. Work-related discussions → work_professional
+6. Personal conversations → personal
+7. If email contains "unsubscribe", "view in browser", "digest", or "sponsored" → prefer newsletter
+
+Examples:
+
+Subject: Interview Invitation
+From: recruiter@google.com
+Category: job_recruitment
+
+Subject: Your OTP Code
+From: security@amazon.com
+Category: notifications
+
+Subject: Weekly AI Digest
+From: newsletter@openai.com
+Category: newsletter
+
+Subject: AWS Invoice Available
+From: billing@amazon.com
+Category: finance
+
+Subject: Cabin trip next month?
+From: sarah@homemail.com
+Category: personal
+
+Classify:
+
 Subject: ${subject}
 From: ${from}
-Preview: ${snippet}
+Snippet: ${snippet}
 
 Category:`.trim(),
 
