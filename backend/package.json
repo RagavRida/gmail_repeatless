@@ -1,0 +1,25 @@
+{
+  "name": "gmail-repeatless-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "AI-powered Gmail Intelligence Platform backend",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "googleapis": "^144.0.0",
+    "@supabase/supabase-js": "^2.49.0",
+    "@google/genai": "^2.4.0",
+    "openai": "^4.77.0",
+    "dotenv": "^17.2.3",
+    "cors": "^2.8.5",
+    "helmet": "^8.1.0",
+    "p-limit": "^6.2.0",
+    "express-session": "^1.18.1",
+    "cookie-parser": "^1.4.7",
+    "morgan": "^1.10.0"
+  }
+}
