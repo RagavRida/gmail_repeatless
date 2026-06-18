@@ -41,45 +41,46 @@ router.post('/start', requireAuth, async (req, res, next) => {
 
         logger.info(`Sync completed: ${JSON.stringify({ ...result, newMessageIds: result.newMessageIds?.length || 0 })}`);
 
-        const newIds = result.newMessageIds || [];
+        const allNewIds = result.newMessageIds || [];
 
-        if (newIds.length > 0) {
+        if (allNewIds.length > 0) {
           // ═══════════════════════════════════════════════════
           // PRIORITY 1: Process NEW emails immediately
+          // For large syncs (full sync), cap at 30 most recent
           // ═══════════════════════════════════════════════════
-          logger.info(`[PostSync] Priority processing ${newIds.length} new emails...`);
+          const PRIORITY_CAP = 30;
+          const priorityIds = allNewIds.slice(-PRIORITY_CAP); // Last N = most recent
+          logger.info(`[PostSync] Priority processing ${priorityIds.length}/${allNewIds.length} newest emails...`);
 
-          // 1a. Categorize new emails immediately (so they show in correct UI category)
+          // 1a. Categorize priority emails immediately
           let categorized = 0;
-          for (const msgId of newIds) {
+          for (const msgId of priorityIds) {
             try {
               await categorizeMessage(msgId);
               categorized++;
             } catch (err) {
-              logger.warn(`[PostSync] Failed to categorize new msg ${msgId}: ${err.message}`);
+              logger.warn(`[PostSync] Failed to categorize ${msgId}: ${err.message}`);
             }
           }
-          logger.info(`[PostSync] Categorized ${categorized}/${newIds.length} new emails`);
+          logger.info(`[PostSync] ✅ Categorized ${categorized}/${priorityIds.length} priority emails`);
 
-          // 1b. Embed new emails immediately (so they're searchable via vector)
-          let embedded = 0;
-          await embedSpecificMessages(accountId, newIds);
-          embedded = newIds.length;
-          logger.info(`[PostSync] Embedded ${embedded} new emails`);
+          // 1b. Embed priority emails immediately
+          await embedSpecificMessages(accountId, priorityIds);
+          logger.info(`[PostSync] ✅ Embedded ${priorityIds.length} priority emails`);
         }
 
         // ═══════════════════════════════════════════════════
-        // PRIORITY 2: Continue processing old emails in background
+        // PRIORITY 2: Continue ALL remaining in background
         // ═══════════════════════════════════════════════════
-        logger.info('[PostSync] Background: processing remaining uncategorized/unembedded emails...');
+        logger.info('[PostSync] Launching background tasks for remaining emails...');
 
-        // 2a. Categorize remaining old uncategorized messages
+        // 2a. Categorize ALL uncategorized messages (includes the ones skipped above)
         const { batchCategorize } = await import('../services/categorization.js');
         batchCategorize(accountId)
           .then(n => { if (n > 0) logger.info(`[PostSync] Background categorized ${n} remaining messages`); })
           .catch(err => logger.error(`[PostSync] Background categorization failed: ${err.message}`));
 
-        // 2b. Embed remaining old un-embedded messages
+        // 2b. Embed ALL un-embedded messages
         generateEmbeddings(accountId)
           .then(() => logger.info(`[PostSync] Background embedding complete`))
           .catch(err => logger.error(`[PostSync] Background embedding failed: ${err.message}`));

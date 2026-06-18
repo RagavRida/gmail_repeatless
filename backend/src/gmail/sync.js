@@ -11,7 +11,6 @@ import { getGmailClient } from './client.js';
 import { withBackoff } from './backoff.js';
 import { getSupabase } from '../db/client.js';
 import { logger } from '../middleware/logger.js';
-import { batchCategorize } from '../services/categorization.js';
 
 const CONCURRENCY = 5;
 const PAGE_SIZE = 100;
@@ -42,6 +41,7 @@ export async function fullSync(accountId) {
   let totalProcessed = 0;
   let totalErrors = 0;
   let latestHistoryId = null;
+  const newMessageIds = []; // Track ALL synced message IDs for priority processing
 
   try {
     let pageToken = null;
@@ -64,19 +64,16 @@ export async function fullSync(accountId) {
       // Batch fetch full message bodies with bounded concurrency
       const results = await Promise.allSettled(
         messages.map((msg) =>
-          limit(() => fetchAndPersistMessage(gmail, db, accountId, msg.id))
+          limit(async () => {
+            await fetchAndPersistMessage(gmail, db, accountId, msg.id);
+            newMessageIds.push(msg.id);
+          })
         )
       );
 
       for (const result of results) {
         if (result.status === 'fulfilled') {
           totalProcessed++;
-          if (result.value?.historyId) {
-            const hid = result.value.historyId;
-            if (!latestHistoryId || BigInt(hid) > BigInt(latestHistoryId)) {
-              latestHistoryId = hid;
-            }
-          }
         } else {
           totalErrors++;
           logger.error('Message fetch/persist failed:', result.reason?.message);
@@ -94,6 +91,17 @@ export async function fullSync(accountId) {
       logger.info(`Full sync progress: ${totalProcessed}/${totalFetched} messages (${totalErrors} errors)`);
 
     } while (pageToken);
+
+    // Get historyId from profile for future incremental syncs
+    try {
+      const profile = await withBackoff(
+        () => gmail.users.getProfile({ userId: 'me' }),
+        'users.getProfile'
+      );
+      latestHistoryId = profile.data.historyId;
+    } catch (e) {
+      logger.warn(`Could not get historyId from profile: ${e.message}`);
+    }
 
     // Update account with historyId for incremental sync
     const accountUpdates = {
@@ -114,13 +122,10 @@ export async function fullSync(accountId) {
     // Build threads from messages
     await buildThreadRecords(db, accountId);
 
-    logger.info(`Full sync completed: ${totalProcessed}/${totalFetched} messages`);
+    logger.info(`Full sync completed: ${totalProcessed}/${totalFetched} messages (${newMessageIds.length} IDs tracked)`);
 
-    // Auto-categorize new messages (fire and forget — don't block sync response)
-    batchCategorize(accountId).then((n) => {
-      if (n > 0) logger.info(`Auto-categorized ${n} messages post-sync`);
-    }).catch((err) => logger.error(`Post-sync categorization failed: ${err.message}`));
-    return { jobId, fetched: totalFetched, processed: totalProcessed, errors: totalErrors };
+    // Return newMessageIds — the sync route handles priority categorization
+    return { jobId, fetched: totalFetched, processed: totalProcessed, errors: totalErrors, newMessageIds };
 
   } catch (error) {
     await db.from('sync_jobs').update({

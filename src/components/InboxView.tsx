@@ -309,7 +309,7 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
                       }`} />
 
                       {/* Msg Details Card */}
-                      <div className="ml-8 bg-[#161920] border border-[#252830] rounded-md p-4 shadow-sm hover:border-[#6366F1]/30 transition-colors">
+                      <div className="ml-8 bg-[#161920] border border-[#252830] rounded-md p-4 shadow-sm hover:border-[#6366F1]/30 transition-colors overflow-hidden">
                         <div className="flex items-center justify-between border-b border-[#252830] pb-2 mb-2">
                           <div className="flex flex-col">
                             <span className="text-xs font-sans font-bold text-white leading-none">
@@ -323,7 +323,10 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
                         </div>
                         
                         {/* Body content message formatted */}
-                        <div className="text-xs text-gray-300 font-sans whitespace-pre-line leading-relaxed select-text select-all-target selection:bg-[#6366F1]/40">
+                        <div 
+                          className="text-xs text-gray-300 font-sans whitespace-pre-line leading-relaxed select-text select-all-target selection:bg-[#6366F1]/40"
+                          style={{ overflowWrap: 'break-word', wordBreak: 'break-word', overflowX: 'hidden', maxWidth: '100%' }}
+                        >
                           {msg.body}
                         </div>
                       </div>

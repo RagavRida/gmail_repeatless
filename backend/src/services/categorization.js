@@ -17,7 +17,7 @@ export async function categorizeMessage(messageId) {
   const db = getSupabase();
 
   const { data: msg } = await db.from('messages')
-    .select('id, subject, from_address, snippet, category')
+    .select('id, subject, from_address, snippet, category, thread_id')
     .eq('id', messageId)
     .single();
 
@@ -33,7 +33,15 @@ export async function categorizeMessage(messageId) {
   // Validate the response is a valid category
   const category = normalizeCategory(result.trim().toLowerCase());
 
+  // Save to message
   await db.from('messages').update({ category }).eq('id', messageId);
+
+  // IMMEDIATELY propagate to thread (so UI shows category right away)
+  if (msg.thread_id && category !== 'uncategorized') {
+    await db.from('threads').update({ category }).eq('id', msg.thread_id);
+  }
+
+  logger.info(`Categorized ${messageId} → ${category}`);
   return category;
 }
 
