@@ -4,6 +4,8 @@
 
 Built with Node.js · Express · Supabase (pgvector) · Gemini 2.5 Flash · NVIDIA NIM
 
+**Live Demo:** [gmailrepeatless.vercel.app](https://gmailrepeatless.vercel.app) · **API:** [gmail-repeatless.onrender.com](https://gmail-repeatless.onrender.com)
+
 ---
 
 ## Quick Start
@@ -287,7 +289,8 @@ gmail_repeatless/
 │   │   │   ├── categorization.js   # Batch email classification (6 categories)
 │   │   │   ├── summarization.js    # Per-message and per-thread summarization
 │   │   │   ├── compose.js          # AI email composition and reply drafting
-│   │   │   └── newsletterDedup.js  # Newsletter item extraction and deduplication
+│   │   │   ├── newsletterDedup.js  # Newsletter item extraction and deduplication
+│   │   │   └── guardrails.js       # 5-layer LLM safety framework (injection, PII, grounding)
 │   │   ├── routes/
 │   │   │   ├── auth.js             # /api/auth/* — OAuth login/callback/logout
 │   │   │   ├── sync.js             # /api/sync/* — Trigger sync, check status
@@ -460,6 +463,25 @@ Handles cross-email reasoning, multi-thread synthesis, and conversational follow
 - **Embed**: Each item embedded via `gemini-embedding-001` at 768 dimensions
 - **Cluster**: Greedy pairwise cosine similarity (threshold ≥ 0.85)
 - **Digest**: Clustered items collapsed to one entry, all source newsletters attributed
+
+### 7. LLM Guardrails (5-Layer Safety Framework)
+
+```
+User Input → [INPUT GUARDRAILS] → LLM → [OUTPUT GUARDRAILS] → User
+                  │                              │
+                  ├─ Prompt injection detection   ├─ PII masking (SSN, cards, passwords)
+                  ├─ Off-topic/harmful blocking   ├─ Hallucination detection
+                  ├─ Input length enforcement     ├─ Grounding check (term overlap)
+                  └─ LLM intent classification    └─ Output length capping
+```
+
+| Layer | What it does |
+|---|---|
+| **Input** | Blocks prompt injection (15+ patterns), off-topic requests, harmful content |
+| **Output** | Masks PII (SSN, credit cards, API keys), detects hallucination indicators |
+| **Grounding** | Verifies ≥15% of response terms appear in retrieved email context |
+| **Compose Safety** | Blocks social engineering, impersonation, phishing language in drafts |
+| **Audit** | Logs all guardrail events with timestamps for post-incident analysis |
 
 ---
 
@@ -656,7 +678,8 @@ gmail_repeatless/
 │       │   ├── summarization.js      # Per-message + per-thread
 │       │   ├── categorization.js     # NIM→Gemini fallback chain
 │       │   ├── compose.js            # Draft generation
-│       │   └── newsletterDedup.js    # Extract → embed → cluster
+│       │   ├── newsletterDedup.js    # Extract → embed → cluster
+│       │   └── guardrails.js         # 5-layer safety framework
 │       ├── routes/                   # Express route handlers
 │       └── middleware/               # Error handler, rate limiter, logger
 └── evals/                            # Evaluation suite
@@ -760,13 +783,35 @@ FRONTEND_URL=http://localhost:3000
 
 ## Deployment
 
-### Railway / Render
+### Split Deployment (Current — Vercel + Render)
+
+| Component | Platform | URL |
+|---|---|---|
+| **Frontend** | Vercel | [gmailrepeatless.vercel.app](https://gmailrepeatless.vercel.app) |
+| **Backend** | Render | [gmail-repeatless.onrender.com](https://gmail-repeatless.onrender.com) |
+
+**Vercel Setup:**
+1. Connect GitHub repo
+2. Set env var: `VITE_API_URL=https://gmail-repeatless.onrender.com/api`
+3. Deploy
+
+**Render Setup:**
+1. Connect GitHub repo, set root directory to `backend`
+2. Build command: `npm install`
+3. Start command: `node server.js`
+4. Set all environment variables (see `.env.example`)
+5. Key production vars:
+   - `FRONTEND_URL=https://gmailrepeatless.vercel.app`
+   - `GOOGLE_REDIRECT_URI=https://gmail-repeatless.onrender.com/api/auth/google/callback`
+   - `NODE_ENV=production`
+
+### Single-Service Deployment (Railway / Render)
 
 1. Push to GitHub
-2. Connect repo in Railway/Render dashboard
-3. Set environment variables in provider dashboard
-4. Build command: `npm run build`
-5. Start command: `cd backend && node server.js`
+2. Connect repo in provider dashboard
+3. Build command: `npm run build`
+4. Start command: `cd backend && node server.js`
+5. Set environment variables
 6. Update `GOOGLE_REDIRECT_URI` and `FRONTEND_URL` to production URL
 
-The Express server automatically serves the Vite build from `dist/` and handles SPA routing with `trust proxy` enabled for secure cookies behind reverse proxies.
+The Express server serves the Vite build from `dist/` with `trust proxy` enabled for secure cookies behind reverse proxies.
