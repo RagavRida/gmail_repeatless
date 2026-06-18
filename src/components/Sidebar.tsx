@@ -1,5 +1,5 @@
 import React from 'react';
-import { Inbox, Sparkles, PenSquare, LayoutGrid, Newspaper, Terminal, LogIn, LogOut, RefreshCw } from 'lucide-react';
+import { Inbox, Sparkles, PenSquare, LayoutGrid, Newspaper, Terminal, LogIn, LogOut, RefreshCw, Tags } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: string;
@@ -10,9 +10,11 @@ interface SidebarProps {
   onLogout?: () => void;
   onSync?: (type: 'full' | 'incremental') => void;
   syncStatus?: string;
+  onCategorize?: () => void;
+  categorizeStatus?: string;
 }
 
-export default function Sidebar({ activeTab, setActiveTab, isAuthenticated, userEmail, onLogin, onLogout, onSync, syncStatus }: SidebarProps) {
+export default function Sidebar({ activeTab, setActiveTab, isAuthenticated, userEmail, onLogin, onLogout, onSync, syncStatus, onCategorize, categorizeStatus }: SidebarProps) {
   const navItems = [
     { id: 'inbox', label: 'Inbox', icon: Inbox },
     { id: 'chat', label: 'AI Chat Agent', icon: Sparkles },
@@ -86,6 +88,27 @@ export default function Sidebar({ activeTab, setActiveTab, isAuthenticated, user
               </button>
               <span className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-medium font-sans text-gray-200 bg-[#161920] border border-[#252830] rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150 z-50 shadow-xl">
                 {syncStatus === 'syncing' ? 'Syncing...' : 'Sync Gmail'}
+              </span>
+            </div>
+          )}
+
+          {/* Categorize button */}
+          {isAuthenticated && onCategorize && (
+            <div className="relative group flex justify-center">
+              <button
+                id="nav-btn-categorize"
+                onClick={onCategorize}
+                disabled={categorizeStatus === 'running'}
+                className={`w-10 h-10 rounded-md flex items-center justify-center transition-all duration-200 cursor-pointer ${
+                  categorizeStatus === 'running'
+                    ? 'bg-[#6366F1]/10 text-[#6366F1] animate-pulse'
+                    : 'text-gray-400 hover:bg-[#252830] hover:text-white'
+                }`}
+              >
+                <Tags size={18} className={categorizeStatus === 'running' ? 'animate-spin' : ''} />
+              </button>
+              <span className="absolute left-14 top-1/2 -translate-y-1/2 px-2.5 py-1 text-xs font-medium font-sans text-gray-200 bg-[#161920] border border-[#252830] rounded-md whitespace-nowrap opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity duration-150 z-50 shadow-xl">
+                {categorizeStatus === 'running' ? 'Categorizing...' : 'AI Categorize'}
               </span>
             </div>
           )}

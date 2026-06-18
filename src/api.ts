@@ -112,6 +112,14 @@ export async function getCategories() {
   return request('/categories');
 }
 
+export async function runCategorization() {
+  return request('/categories/run', { method: 'POST' });
+}
+
+export async function getCategorizeStatus() {
+  return request('/categories/status');
+}
+
 // ================================================================
 // CHAT
 // ================================================================

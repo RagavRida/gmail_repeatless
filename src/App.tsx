@@ -21,6 +21,7 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string>('');
   const [syncStatus, setSyncStatus] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
+  const [categorizeStatus, setCategorizeStatus] = useState<string>('');
 
   // Cross-view contextual state for replying
   const [replyContextEmail, setReplyContextEmail] = useState<Email | null>(null);
@@ -117,6 +118,29 @@ export default function App() {
     setActiveTab('inbox');
   };
 
+  async function handleCategorize() {
+    try {
+      setCategorizeStatus('running');
+      await api.runCategorization();
+      // Poll for completion — reload emails every 5s until done
+      const pollId = setInterval(async () => {
+        try {
+          const status = await api.getCategorizeStatus();
+          await loadEmails(); // Refresh with new categories
+          if (status.uncategorized === 0 || status.progress >= 100) {
+            clearInterval(pollId);
+            setCategorizeStatus('done');
+          }
+        } catch {
+          clearInterval(pollId);
+          setCategorizeStatus('failed');
+        }
+      }, 5000);
+    } catch {
+      setCategorizeStatus('failed');
+    }
+  }
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0D0F12] font-sans antialiased">
       {/* 60px Left Icon Navigation Sidebar */}
@@ -129,6 +153,8 @@ export default function App() {
         onLogout={handleLogout}
         onSync={handleSync}
         syncStatus={syncStatus}
+        onCategorize={handleCategorize}
+        categorizeStatus={categorizeStatus}
       />
 
       {/* Main Content Pane wrapper */}
