@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Email } from '../types';
 import { Sparkles, Loader2, Send, Trash, Paperclip, ChevronDown, ChevronUp, AlertCircle, RefreshCw } from 'lucide-react';
+import * as api from '../api';
 
 interface ComposeViewProps {
   emails: Email[];
   replyContextEmail: Email | null;
   clearReplyContext: () => void;
+  isAuthenticated?: boolean;
 }
 
-export default function ComposeView({ emails, replyContextEmail, clearReplyContext }: ComposeViewProps) {
+export default function ComposeView({ emails, replyContextEmail, clearReplyContext, isAuthenticated }: ComposeViewProps) {
   const [activeTab, setActiveTab] = useState<'new' | 'reply'>('new');
   
   // New Email fields
@@ -58,60 +60,96 @@ export default function ComposeView({ emails, replyContextEmail, clearReplyConte
     }, 4000);
   };
 
-  const handleGenerateNewDraft = () => {
+  const handleGenerateNewDraft = async () => {
     if (!newPrompt.trim()) return;
     setIsGeneratingNew(true);
     setNewDraft('');
 
-    setTimeout(() => {
-      let draftText = '';
-      const recipientName = newRecipient.split('@')[0] || 'Team';
-      const capitalizedName = recipientName.charAt(0).toUpperCase() + recipientName.slice(1);
-
-      if (newPrompt.toLowerCase().includes('job') || newPrompt.toLowerCase().includes('resume') || newPrompt.toLowerCase().includes('stripe')) {
-        draftText = `Subject: Staff Systems Consultant Opportunity & Feedback Query\n\nDear Julie,\n\nThank you for sharing the product roadmap update regarding Stripe's focus on high-frequency checkout design systems. I appreciate the talent acquisition review cycle.\n\nSince my background matches your next-phase planning benchmarks for programmatic user agents, I would love to schedule a brief 10-minute touchpoint later this quarter to learn about specialized roles.\n\nRespectfully,\nDeveloper`;
-      } else if (newTone === 'Concise') {
-        draftText = `Subject: Quick Follow-up - Project Status\n\nHi ${capitalizedName},\n\nJust writing to check on the latest deployment pipeline logs. Can you review if the TypeScript build issues on main have been sorted out? Let me know.\n\nThanks,\nDeveloper`;
-      } else if (newTone === 'Friendly') {
-        draftText = `Subject: Catching up on design specs!\n\nHi ${capitalizedName},\n\nHope your week is off to a wonderful start! \n\nI was reviewing the beautiful design frames for our custom workspace integration. I'd love to chat and hear if you have any feedback or ideas to iterate on. Let me know what your afternoon looks like!\n\nBest,\nDeveloper`;
+    try {
+      if (isAuthenticated) {
+        const result = await api.composeDraft({ prompt: newPrompt, tone: newTone, recipient: newRecipient, subject: newSubject });
+        const draftText = result.subject ? `Subject: ${result.subject}\n\n${result.body}` : result.body;
+        setNewDraft(draftText);
+        triggerNotification('AI Email Draft generated successfully!');
       } else {
-        draftText = `Dear ${capitalizedName},\n\nI hope this email finds you well.\n\nI am reaching out regarding the open items on our infrastructure project. Specifically, we should schedule a timeline to review our database capacities and look into securing our production pipeline.\n\nPlease let me know your availability for a synchronous sync this week.\n\nSincerely,\nDeveloper`;
+        // Demo mode fallback
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        const recipientName = newRecipient.split('@')[0] || 'Team';
+        const capitalizedName = recipientName.charAt(0).toUpperCase() + recipientName.slice(1);
+        let draftText = '';
+        if (newPrompt.toLowerCase().includes('job') || newPrompt.toLowerCase().includes('resume') || newPrompt.toLowerCase().includes('stripe')) {
+          draftText = `Subject: Staff Systems Consultant Opportunity & Feedback Query\n\nDear Julie,\n\nThank you for sharing the product roadmap update regarding Stripe's focus on high-frequency checkout design systems. I appreciate the talent acquisition review cycle.\n\nSince my background matches your next-phase planning benchmarks for programmatic user agents, I would love to schedule a brief 10-minute touchpoint later this quarter to learn about specialized roles.\n\nRespectfully,\nDeveloper`;
+        } else if (newTone === 'Concise') {
+          draftText = `Subject: Quick Follow-up - Project Status\n\nHi ${capitalizedName},\n\nJust writing to check on the latest deployment pipeline logs. Can you review if the TypeScript build issues on main have been sorted out? Let me know.\n\nThanks,\nDeveloper`;
+        } else if (newTone === 'Friendly') {
+          draftText = `Subject: Catching up on design specs!\n\nHi ${capitalizedName},\n\nHope your week is off to a wonderful start! \n\nI was reviewing the beautiful design frames for our custom workspace integration. I'd love to chat and hear if you have any feedback or ideas to iterate on. Let me know what your afternoon looks like!\n\nBest,\nDeveloper`;
+        } else {
+          draftText = `Dear ${capitalizedName},\n\nI hope this email finds you well.\n\nI am reaching out regarding the open items on our infrastructure project. Specifically, we should schedule a timeline to review our database capacities and look into securing our production pipeline.\n\nPlease let me know your availability for a synchronous sync this week.\n\nSincerely,\nDeveloper`;
+        }
+        setNewDraft(draftText);
+        triggerNotification('AI Email Draft generated successfully!');
       }
-
-      setNewDraft(draftText);
+    } catch (err) {
+      triggerNotification(`Draft generation failed: ${(err as Error).message}`, 'info');
+    } finally {
       setIsGeneratingNew(false);
-      triggerNotification('AI Email Draft generated successfully!');
-    }, 1500);
+    }
   };
 
-  const handleGenerateReplyDraft = () => {
+  const handleGenerateReplyDraft = async () => {
     if (!replyPrompt.trim() || !selectedParentEmail) return;
     setIsGeneratingReply(true);
     setReplyDraft('');
 
-    setTimeout(() => {
-      let draftText = '';
-      const senderName = selectedParentEmail.sender;
-
-      if (selectedParentEmail.category === 'Work') {
-        draftText = `Hi ${senderName},\n\nThanks for coordinating the weekly engineering sprint. \n\nRegarding the Supabase billing overages on our project, Antony has granted us a manual grace period whitelist until Friday. I am currently reviewing the storage usage to clean up old database log tables before we execute the Pro plan subscription migration.\n\nLet's discuss during the standup tomorrow.\n\nRegards,\nDeveloper`;
-      } else if (selectedParentEmail.category === 'Personal') {
-        draftText = `Hey ${senderName},\n\nCount me in for the cabin trip! Truly look forward to Mendocino. July 3-5 works perfectly on my side.\n\nI am sending you my $120 share of the reservation cost via Venmo right now. Thanks so much for putting this together and reserving the listing!\n\nBest,\nDeveloper`;
-      } else if (selectedParentEmail.category === 'Job') {
-        draftText = `Dear Julie Vance,\n\nThank you for your response and for the detailed context regarding your hiring directions. While I am naturally disappointed to hear you are prioritizing other checkout flow roles, I deeply appreciate the portfolio feedback.\n\nI will focus on integrating merchant checkout scaling tests into my next prototypes. Let\'s stay in contact as team roles evolve.\n\nSincerely,\nDeveloper`;
+    try {
+      if (isAuthenticated) {
+        const result = await api.composeReply(selectedParentEmail.id, { prompt: replyPrompt, tone: replyTone });
+        setReplyDraft(result.body);
+        triggerNotification('AI Reply Draft synthesised successfully!');
       } else {
-        draftText = `Hi ${senderName},\n\nThank you for the update. I have reviewed the details you outlined and am proceeding with the recommended steps shortly. Let me know if any other dependencies arise.\n\nBest,\nDeveloper`;
+        // Demo mode fallback
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        let draftText = '';
+        const senderName = selectedParentEmail.sender;
+        if (selectedParentEmail.category === 'Work') {
+          draftText = `Hi ${senderName},\n\nThanks for coordinating the weekly engineering sprint. \n\nRegarding the Supabase billing overages on our project, Antony has granted us a temporary grace period whitelist until Friday. I am currently reviewing the storage usage to clean up old database log tables before we execute the Pro plan subscription migration.\n\nLet's discuss during the standup tomorrow.\n\nRegards,\nDeveloper`;
+        } else if (selectedParentEmail.category === 'Personal') {
+          draftText = `Hey ${senderName},\n\nCount me in for the cabin trip! Truly look forward to Mendocino. July 3-5 works perfectly on my side.\n\nI am sending you my $120 share of the reservation cost via Venmo right now. Thanks so much for putting this together and reserving the listing!\n\nBest,\nDeveloper`;
+        } else if (selectedParentEmail.category === 'Job') {
+          draftText = `Dear Julie Vance,\n\nThank you for your response and for the detailed context regarding your hiring directions. While I am naturally disappointed to hear you are prioritizing other checkout flow roles, I deeply appreciate the portfolio feedback.\n\nI will focus on integrating merchant checkout scaling tests into my next prototypes. Let\'s stay in contact as team roles evolve.\n\nSincerely,\nDeveloper`;
+        } else {
+          draftText = `Hi ${senderName},\n\nThank you for the update. I have reviewed the details you outlined and am proceeding with the recommended steps shortly. Let me know if any other dependencies arise.\n\nBest,\nDeveloper`;
+        }
+        setReplyDraft(draftText);
+        triggerNotification('AI Reply Draft synthesised successfully!');
       }
-
-      setReplyDraft(draftText);
+    } catch (err) {
+      triggerNotification(`Reply generation failed: ${(err as Error).message}`, 'info');
+    } finally {
       setIsGeneratingReply(false);
-      triggerNotification('AI Reply Draft synthesised successfully!');
-    }, 1500);
+    }
   };
 
-  const handleSendSimulation = (type: 'new' | 'reply') => {
+  const handleSendSimulation = async (type: 'new' | 'reply') => {
     const to = type === 'new' ? newRecipient : selectedParentEmail?.senderEmail;
-    triggerNotification(`Simulated sending email to ${to || 'recipient'} - added to outbox!`, 'success');
+    
+    try {
+      if (isAuthenticated && to) {
+        const subject = type === 'new' ? newSubject : selectedParentEmail?.subject || '';
+        const body = type === 'new' ? newDraft : replyDraft;
+        await api.sendEmail({
+          to,
+          subject,
+          body,
+          ...(type === 'reply' && selectedParentEmail && { threadId: selectedParentEmail.id }),
+        });
+        triggerNotification(`Email sent to ${to} successfully!`, 'success');
+      } else {
+        triggerNotification(`Simulated sending email to ${to || 'recipient'} - added to outbox!`, 'success');
+      }
+    } catch (err) {
+      triggerNotification(`Failed to send: ${(err as Error).message}`, 'info');
+    }
     
     // Reset states
     if (type === 'new') {

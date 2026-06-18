@@ -1,13 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NewsletterItem } from '../types';
 import { Newspaper, HelpCircle, Layers, ExternalLink, Percent, ToggleLeft, ToggleRight, Sparkles } from 'lucide-react';
+import * as api from '../api';
 
 interface NewsletterDigestProps {
   newsletters: NewsletterItem[];
+  isAuthenticated?: boolean;
 }
 
-export default function NewsletterDigest({ newsletters }: NewsletterDigestProps) {
+export default function NewsletterDigest({ newsletters: initialNewsletters, isAuthenticated }: NewsletterDigestProps) {
   const [onlyDeduplicated, setOnlyDeduplicated] = useState(false);
+  const [newsletters, setNewsletters] = useState<NewsletterItem[]>(initialNewsletters);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      api.getNewsletterDigest(7).then((result) => {
+        if (result.items && result.items.length > 0) {
+          setNewsletters(result.items);
+        }
+      }).catch(console.error);
+    }
+  }, [isAuthenticated]);
 
   const displayedItems = onlyDeduplicated
     ? newsletters.filter((item) => item.isDeduplicated)

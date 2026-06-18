@@ -2,20 +2,22 @@ import React, { useState } from 'react';
 import { ChatSession, ChatMessage } from '../types';
 import { DUMMY_CHAT_HISTORY } from '../dummyData';
 import { MessageSquare, Send, Sparkles, AlertCircle, Quote, Plus, ArrowRight, User } from 'lucide-react';
+import * as api from '../api';
 
 interface AIChatAgentProps {
   chatSessions: ChatSession[];
   setChatSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
+  isAuthenticated?: boolean;
 }
 
-export default function AIChatAgent({ chatSessions, setChatSessions }: AIChatAgentProps) {
+export default function AIChatAgent({ chatSessions, setChatSessions, isAuthenticated }: AIChatAgentProps) {
   const [selectedSessionId, setSelectedSessionId] = useState<string>(chatSessions[0]?.id || '');
   const [inputText, setInputText] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
   const activeSession = chatSessions.find((s) => s.id === selectedSessionId) || chatSessions[0];
 
-  const handleSendMessage = (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string) => {
     const text = textToSend || inputText;
     if (!text.trim() || isGenerating) return;
 
@@ -46,111 +48,86 @@ export default function AIChatAgent({ chatSessions, setChatSessions }: AIChatAge
       })
     );
 
-    // Trigger AI response generation simulation
     setIsGenerating(true);
 
-    setTimeout(() => {
-      let aiContent = '';
-      let aiCitations: ChatMessage['citations'] = [];
+    try {
+      // Try real API if authenticated
+      if (isAuthenticated) {
+        const result = await api.sendChatMessage(sessionToUpdate.id, text);
 
-      // Smart heuristics based on prompt
-      const lower = text.toLowerCase();
-      if (lower.includes('supabase') || lower.includes('overage') || lower.includes('bill')) {
-        aiContent = `I did a diagnostic query across your billing files. Your Supabase project **database-prod-x** is exceeding limits in multiple sectors:\n\n- **CPU cycle metrics**: 240% above limit\n- **Database Space**: 1.2GB currently occupied\n\nAntony from support granted you until **Friday morning** (Jun 19) to finalize the pay-as-you-go Pro subscription before database operations are consolidated. Additionally, your **AWS bill of $412.80** is scheduled for auto-charge on Jun 18.`;
-        aiCitations = [
-          {
-            sender: 'Antony (Support)',
-            senderEmail: 'antony@supabase.io',
-            subject: '[Urgent] API Overages & Q3 Scaling Plan',
-            time: 'Jun 16'
-          },
-          {
-            sender: 'AWS Billing',
-            senderEmail: 'billing@amazon.com',
-            subject: 'AWS Invoice - May 2026',
-            time: 'Jun 14'
-          }
-        ];
-      } else if (lower.includes('stripe') || lower.includes('job') || lower.includes('apply')) {
-        aiContent = `Analyzing recruiter channels: Julie Vance (stripe-design@stripe.com) sent a formal update on June 15 regarding the **Senior Staff Product Designer** role. They have filled the pipeline and decided not to move forward, suggesting they are prioritizing profiles with merchant checkout experience.\n\nHowever, you have **14 new matching matches on LinkedIn** (at Anthropic, Tesla, Scale AI) looking for AI talent.`;
-        aiCitations = [
-          {
-            sender: 'Julie Vance',
-            senderEmail: 'stripe-design@stripe.com',
-            subject: 'Update on your application - Senior Staff Product Designer',
-            time: 'Jun 15'
-          }
-        ];
-      } else if (lower.includes('news') || lower.includes('newsletter') || lower.includes('sora')) {
-        aiContent = `In Import AI #354, Jack Clark notes that OpenAI Sora API programmatic access is rolling out to enterprise entities. However, heavy compute concerns are keeping it restricted to high-resource developers.\n\nTLDR Tech reports Apple's on-device CoreML and M4 silicon integrations are driving low-latency local execution formats, minimizing server dependency.`;
-        aiCitations = [
-          {
-            sender: 'Jack Clark',
-            senderEmail: 'jack@importai.news',
-            subject: 'Import AI #354',
-            time: 'Jun 16'
-          },
-          {
-            sender: 'TLDR Web Dev',
-            senderEmail: 'tldr@tldr.tech',
-            subject: "TLDR Tech: Apple's M4",
-            time: 'Jun 15'
-          }
-        ];
-      } else if (lower.includes('cabin') || lower.includes('sarah') || lower.includes('trip')) {
-        aiContent = `Sarah Jenkins sent a reminder on June 13 regarding the **Mendocino Cabin Trip**. \n\n- **Timeline**: July 3-5\n- **Target expense**: $120 each (based on 7 splits)\n- **Veto warning**: She needs confirmation by **Thursday** to finalize the rental lock in.\n\nNo other confirmations correspond to the email thread yet.`;
-        aiCitations = [
-          {
-            sender: 'Sarah Jenkins',
-            senderEmail: 'sarah@homemail.com',
-            subject: 'Re: Cabin trip next month?',
-            time: 'Jun 13'
-          }
-        ];
+        const aiMsg: ChatMessage = {
+          id: `m-ai-${Date.now()}`,
+          role: 'assistant',
+          content: result.content,
+          time: result.time || `Today, ${currentTime}`,
+          citations: result.citations || []
+        };
+
+        setChatSessions((prev) =>
+          prev.map((session) => {
+            if (session.id === sessionToUpdate.id) {
+              return { ...session, messages: [...session.messages, aiMsg] };
+            }
+            return session;
+          })
+        );
       } else {
-        // Fallback generic but high-quality AI reply
-        aiContent = `I searched your inbox archive in real-time but couldn't locate specific conversations matching that query. Based on your current 12 loaded emails, here are the dominant contexts:
-
-1. **Supabase Billing Threat** (Work category)
-2. **Stripe Application Rejection** (Job category)
-3. **Mendocino Summer Reservation** from Sarah (Personal category)
-4. **Vulnerable Axios CVE-2026-1182 Warning** (Notification category)
-
-Please refine your question (e.g. "Draft a reply to Sarah" or "Describe Supabase overages").`;
-        aiCitations = [
-          {
-            sender: 'System Indexer',
-            senderEmail: 'ai-engine@platform.internal',
-            subject: 'All Inbox vector indexes updated',
-            time: 'Just now'
-          }
-        ];
+        // Fallback: simulated response for demo mode
+        await new Promise(resolve => setTimeout(resolve, 1200));
+        const aiMsg = generateDemoResponse(text, currentTime);
+        setChatSessions((prev) =>
+          prev.map((session) => {
+            if (session.id === sessionToUpdate.id) {
+              return { ...session, messages: [...session.messages, aiMsg] };
+            }
+            return session;
+          })
+        );
       }
-
-      const aiMsg: ChatMessage = {
-        id: `m-ai-${Date.now()}`,
+    } catch (err) {
+      // On API error, show error message
+      const errorMsg: ChatMessage = {
+        id: `m-err-${Date.now()}`,
         role: 'assistant',
-        content: aiContent,
+        content: `I encountered an error processing your request. Please try again.\n\nError: ${(err as Error).message}`,
         time: `Today, ${currentTime}`,
-        citations: aiCitations
       };
-
       setChatSessions((prev) =>
         prev.map((session) => {
           if (session.id === sessionToUpdate.id) {
-            return {
-              ...session,
-              messages: [...session.messages, aiMsg]
-            };
+            return { ...session, messages: [...session.messages, errorMsg] };
           }
           return session;
         })
       );
+    } finally {
       setIsGenerating(false);
-    }, 1200);
+    }
   };
 
-  const createNewChat = () => {
+  const createNewChat = async () => {
+    try {
+      if (isAuthenticated) {
+        const result = await api.createConversation();
+        const newSession: ChatSession = {
+          id: result.id,
+          title: result.title || 'New Investigation',
+          messages: result.messages || [{
+            id: `msg-welcome-${Date.now()}`,
+            role: 'assistant',
+            content: 'Hello! I am your local email intelligence agent. Ask me to synthesize, audit, draft, or correlate facts across your newsletters and work threads.',
+            time: 'Just now'
+          }]
+        };
+        setChatSessions((prev) => [newSession, ...prev]);
+        setSelectedSessionId(newSession.id);
+        return;
+      }
+    } catch (err) {
+      console.error('Failed to create conversation:', err);
+    }
+
+    // Fallback: local-only session
     const newId = `session-${Date.now()}`;
     const newSession: ChatSession = {
       id: newId,
@@ -221,13 +198,17 @@ Please refine your question (e.g. "Draft a reply to Sarah" or "Describe Supabase
         {/* Core Header */}
         <div className="h-[60px] border-b border-[#252830] bg-[#161920]/60 flex items-center px-6 justify-between shrink-0 select-none">
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-[#22D3EE] animate-pulse"></span>
+            <span className={`w-2 h-2 rounded-full ${isAuthenticated ? 'bg-[#22D3EE] animate-pulse' : 'bg-gray-500'}`}></span>
             <h3 className="text-xs font-mono font-semibold text-white tracking-wider uppercase">
               Agent Thread Core
             </h3>
           </div>
-          <span className="text-[9px] px-2 py-0.5 bg-[#252830] border border-gray-600 rounded-md font-mono text-[#22D3EE]">
-            GPT-Agent Context Loaded
+          <span className={`text-[9px] px-2 py-0.5 border rounded-md font-mono ${
+            isAuthenticated 
+              ? 'bg-[#22D3EE]/10 border-[#22D3EE]/30 text-[#22D3EE]' 
+              : 'bg-[#252830] border-gray-600 text-gray-400'
+          }`}>
+            {isAuthenticated ? 'RAG Agent Connected' : 'Demo Mode — Connect Gmail for Live'}
           </span>
         </div>
 
@@ -304,7 +285,7 @@ Please refine your question (e.g. "Draft a reply to Sarah" or "Describe Supabase
               </div>
               <div className="bg-[#161920] border border-[#252830] rounded-md p-4 text-xs leading-relaxed text-gray-400 font-sans">
                 <p className="flex items-center gap-2 font-mono text-[10px]">
-                  <span>Scanning email index and validating credentials...</span>
+                  <span>{isAuthenticated ? 'Querying email knowledge base...' : 'Scanning email index and validating credentials...'}</span>
                 </p>
                 <div className="flex gap-1 mt-2">
                   <span className="w-1.5 h-1.5 bg-[#22D3EE] rounded-full animate-bounce"></span>
@@ -365,4 +346,48 @@ Please refine your question (e.g. "Draft a reply to Sarah" or "Describe Supabase
       </div>
     </div>
   );
+}
+
+// Demo mode response generator (used when not authenticated)
+function generateDemoResponse(text: string, currentTime: string): ChatMessage {
+  let aiContent = '';
+  let aiCitations: ChatMessage['citations'] = [];
+
+  const lower = text.toLowerCase();
+  if (lower.includes('supabase') || lower.includes('overage') || lower.includes('bill')) {
+    aiContent = `I did a diagnostic query across your billing files. Your Supabase project **database-prod-x** is exceeding limits in multiple sectors:\n\n- **CPU cycle metrics**: 240% above limit\n- **Database Space**: 1.2GB currently occupied\n\nAntony from support granted you until **Friday morning** (Jun 19) to finalize the pay-as-you-go Pro subscription before database operations are consolidated. Additionally, your **AWS bill of $412.80** is scheduled for auto-charge on Jun 18.`;
+    aiCitations = [
+      { sender: 'Antony (Support)', senderEmail: 'antony@supabase.io', subject: '[Urgent] API Overages & Q3 Scaling Plan', time: 'Jun 16' },
+      { sender: 'AWS Billing', senderEmail: 'billing@amazon.com', subject: 'AWS Invoice - May 2026', time: 'Jun 14' }
+    ];
+  } else if (lower.includes('stripe') || lower.includes('job') || lower.includes('apply')) {
+    aiContent = `Analyzing recruiter channels: Julie Vance (stripe-design@stripe.com) sent a formal update on June 15 regarding the **Senior Staff Product Designer** role. They have filled the pipeline and decided not to move forward, suggesting they are prioritizing profiles with merchant checkout experience.\n\nHowever, you have **14 new matching matches on LinkedIn** (at Anthropic, Tesla, Scale AI) looking for AI talent.`;
+    aiCitations = [
+      { sender: 'Julie Vance', senderEmail: 'stripe-design@stripe.com', subject: 'Update on your application - Senior Staff Product Designer', time: 'Jun 15' }
+    ];
+  } else if (lower.includes('news') || lower.includes('newsletter') || lower.includes('sora')) {
+    aiContent = `In Import AI #354, Jack Clark notes that OpenAI Sora API programmatic access is rolling out to enterprise entities. However, heavy compute concerns are keeping it restricted to high-resource developers.\n\nTLDR Tech reports Apple's on-device CoreML and M4 silicon integrations are driving low-latency local execution formats, minimizing server dependency.`;
+    aiCitations = [
+      { sender: 'Jack Clark', senderEmail: 'jack@importai.news', subject: 'Import AI #354', time: 'Jun 16' },
+      { sender: 'TLDR Web Dev', senderEmail: 'tldr@tldr.tech', subject: "TLDR Tech: Apple's M4", time: 'Jun 15' }
+    ];
+  } else if (lower.includes('cabin') || lower.includes('sarah') || lower.includes('trip')) {
+    aiContent = `Sarah Jenkins sent a reminder on June 13 regarding the **Mendocino Cabin Trip**. \n\n- **Timeline**: July 3-5\n- **Target expense**: $120 each (based on 7 splits)\n- **Veto warning**: She needs confirmation by **Thursday** to finalize the rental lock in.\n\nNo other confirmations correspond to the email thread yet.`;
+    aiCitations = [
+      { sender: 'Sarah Jenkins', senderEmail: 'sarah@homemail.com', subject: 'Re: Cabin trip next month?', time: 'Jun 13' }
+    ];
+  } else {
+    aiContent = `I searched your inbox archive in real-time but couldn't locate specific conversations matching that query. Based on your current 12 loaded emails, here are the dominant contexts:\n\n1. **Supabase Billing Threat** (Work category)\n2. **Stripe Application Rejection** (Job category)\n3. **Mendocino Summer Reservation** from Sarah (Personal category)\n4. **Vulnerable Axios CVE-2026-1182 Warning** (Notification category)\n\nPlease refine your question (e.g. "Draft a reply to Sarah" or "Describe Supabase overages").`;
+    aiCitations = [
+      { sender: 'System Indexer', senderEmail: 'ai-engine@platform.internal', subject: 'All Inbox vector indexes updated', time: 'Just now' }
+    ];
+  }
+
+  return {
+    id: `m-ai-${Date.now()}`,
+    role: 'assistant',
+    content: aiContent,
+    time: `Today, ${currentTime}`,
+    citations: aiCitations
+  };
 }
