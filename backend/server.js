@@ -50,11 +50,24 @@ app.use(helmet({
   contentSecurityPolicy: config.nodeEnv === 'production' ? undefined : false,
 }));
 
-// CORS (only needed if frontend is served separately during dev)
+// CORS — allow Vercel frontend + local dev
+const allowedOrigins = [
+  config.frontendUrl,
+  'http://localhost:3000',
+  'http://localhost:5173',
+].filter(Boolean);
+
 app.use(cors({
-  origin: config.frontendUrl,
+  origin: (origin, cb) => {
+    // Allow requests with no origin (server-to-server, curl, etc.)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+    cb(null, false);
+  },
   credentials: true,
 }));
+
+// Trust proxy (Render sits behind a reverse proxy — needed for secure cookies)
+app.set('trust proxy', 1);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));

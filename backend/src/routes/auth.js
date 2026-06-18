@@ -35,8 +35,9 @@ router.get('/google/callback', async (req, res, next) => {
 
     logger.info(`User authenticated: ${account.google_email}`);
 
-    // Redirect to frontend
-    res.redirect('/');
+    // Redirect to frontend (Vercel in production, / in development)
+    const frontendUrl = process.env.FRONTEND_URL || '/';
+    res.redirect(frontendUrl);
   } catch (error) {
     next(error);
   }
