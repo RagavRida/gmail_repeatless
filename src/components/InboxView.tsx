@@ -44,13 +44,27 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
     return matchesSearch && matchesCategory;
   });
 
-  const selectEmail = (email: Email) => {
+  const selectEmail = async (email: Email) => {
     setSelectedEmail(email);
     // Mark as read
     if (!email.read) {
       setEmails((prev) =>
         prev.map((e) => (e.id === email.id ? { ...e, read: true } : e))
       );
+    }
+
+    // Auto-generate AI insights on-the-fly if missing
+    if (!email.threadSummary) {
+      try {
+        const { getThread } = await import('../api');
+        const enriched = await getThread(email.id);
+        if (enriched?.threadSummary) {
+          setSelectedEmail((prev) => prev?.id === email.id ? { ...prev, threadSummary: enriched.threadSummary, aiSummary: enriched.aiSummary } : prev);
+          setEmails((prev) => prev.map((e) => e.id === email.id ? { ...e, threadSummary: enriched.threadSummary, aiSummary: enriched.aiSummary } : e));
+        }
+      } catch (err) {
+        console.error('Failed to generate AI insight:', err);
+      }
     }
   };
 
@@ -173,7 +187,7 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
                     <Sparkles size={11} className="text-[#22D3EE] shrink-0 mt-0.5" />
                     <span className="text-[10px] text-gray-300 font-sans leading-normal select-text">
                       <strong className="text-[#22D3EE] font-medium font-mono uppercase tracking-widest text-[8px] mr-1">AI INSIGHT:</strong>
-                      {email.aiSummary}
+                      {email.aiSummary || <span className="text-gray-500 italic">Click to generate insight</span>}
                     </span>
                   </div>
 
@@ -259,7 +273,14 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
 
                 {summaryExpanded && (
                   <div className="p-4 border-t border-[#252830] text-xs font-sans text-gray-300 leading-relaxed bg-[#14161C]/50 select-text selection:bg-[#22D3EE]/30">
-                    {selectedEmail.threadSummary}
+                    {selectedEmail.threadSummary ? (
+                      selectedEmail.threadSummary
+                    ) : (
+                      <div className="flex items-center gap-2 text-gray-500">
+                        <RefreshCw size={12} className="animate-spin" />
+                        <span>Generating AI insight...</span>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
