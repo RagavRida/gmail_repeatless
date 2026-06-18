@@ -259,6 +259,80 @@ FRONTEND_URL=http://localhost:3000
 
 ---
 
+## Project Structure
+
+```
+gmail_repeatless/
+├── backend/                        # Express.js API server
+│   ├── server.js                   # Entry point — mounts routes, starts sync/categorization
+│   ├── .env.example                # Environment variable template with descriptions
+│   ├── src/
+│   │   ├── config/index.js         # Centralized config from environment variables
+│   │   ├── auth/
+│   │   │   ├── oauth.js            # Google OAuth2 flow (consent → token exchange)
+│   │   │   ├── session.js          # Express session middleware + requireAuth guard
+│   │   │   └── crypto.js           # AES-256-GCM encryption for OAuth tokens
+│   │   ├── gmail/
+│   │   │   ├── client.js           # Gmail API client factory (auto-refreshes tokens)
+│   │   │   ├── sync.js             # Full sync + incremental sync orchestration
+│   │   │   ├── backoff.js          # Exponential backoff with jitter for Gmail API
+│   │   │   └── mime.js             # RFC 2822 MIME builder for sending emails
+│   │   ├── ai/
+│   │   │   ├── router.js           # Dual-model router with priority + fallback + retry
+│   │   │   ├── gemini.js           # Gemini 2.5 Flash client (generate + embed)
+│   │   │   ├── nim.js              # NVIDIA NIM client (OpenAI-compatible)
+│   │   │   └── prompts/index.js    # All prompt templates (summarize, categorize, RAG, etc.)
+│   │   ├── services/
+│   │   │   ├── chatAgent.js        # RAG pipeline: filter → retrieve → generate → cite
+│   │   │   ├── categorization.js   # Batch email classification (6 categories)
+│   │   │   ├── summarization.js    # Per-message and per-thread summarization
+│   │   │   ├── compose.js          # AI email composition and reply drafting
+│   │   │   └── newsletterDedup.js  # Newsletter item extraction and deduplication
+│   │   ├── routes/
+│   │   │   ├── auth.js             # /api/auth/* — OAuth login/callback/logout
+│   │   │   ├── sync.js             # /api/sync/* — Trigger sync, check status
+│   │   │   ├── threads.js          # /api/threads/* — List threads, get messages
+│   │   │   ├── chat.js             # /api/chat/* — Conversations and AI messages
+│   │   │   ├── compose.js          # /api/compose/* — Draft and send emails
+│   │   │   ├── categories.js       # /api/categories/* — Category counts and filters
+│   │   │   └── newsletters.js      # /api/newsletters/* — Newsletter digest
+│   │   ├── db/
+│   │   │   ├── client.js           # Supabase client singleton
+│   │   │   ├── schema.sql          # Full database schema (7 tables + indexes)
+│   │   │   └── functions.sql       # pgvector RPC functions (match_messages, search_messages_fts)
+│   │   └── middleware/
+│   │       ├── logger.js           # Structured logging with API call tracking
+│   │       ├── errorHandler.js     # Global error handler
+│   │       └── rateLimiter.js      # Express rate limiter
+│   └── package.json
+├── src/                            # React frontend (Vite + TypeScript)
+│   ├── App.tsx                     # Main app shell with view routing
+│   ├── main.tsx                    # React entry point
+│   ├── index.css                   # Global styles + design tokens
+│   ├── api.ts                      # API client (fetch wrapper with auth)
+│   ├── types.ts                    # TypeScript type definitions
+│   └── components/
+│       ├── Sidebar.tsx             # Navigation sidebar with category counts
+│       ├── InboxView.tsx           # Email thread list with search
+│       ├── AIChatAgent.tsx         # Conversational AI chat interface
+│       ├── ComposeView.tsx         # AI-powered email compose/reply
+│       ├── CategoriesView.tsx      # Category-filtered email views
+│       └── NewsletterDigest.tsx    # Newsletter intelligence dashboard
+├── evals/                          # AI evaluation framework
+│   ├── eval-categorization.js      # Classification accuracy tests
+│   ├── eval-chat.js                # RAG retrieval quality tests
+│   ├── eval-summarization.js       # Summary quality tests
+│   └── llm-judge.js               # LLM-as-judge evaluation
+├── Architecture.md                 # Detailed architecture & design document
+├── vite.config.ts                  # Vite config with API proxy
+├── index.html                      # SPA entry point
+└── package.json                    # Frontend dependencies + scripts
+```
+
+> 📖 For detailed architecture, AI design, database schema, and trade-off analysis, see **[Architecture.md](./Architecture.md)**.
+
+---
+
 ## Architecture
 
 ```mermaid
