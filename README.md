@@ -40,12 +40,221 @@ Vite proxies `/api/*` to Express on port 3001.
 </details>
 
 <details>
-<summary><strong>Google OAuth setup</strong></summary>
+<summary><strong>🔐 Gmail OAuth Setup (Step-by-Step)</strong></summary>
 
-1. [Google Cloud Console](https://console.cloud.google.com/) → Create OAuth2 credentials (Web Application)
-2. Redirect URI: `http://localhost:3001/api/auth/google/callback`
-3. Enable Gmail API
-4. Add your email as a test user (OAuth consent screen → Test users)
+### Prerequisites
+- A Google account (Gmail)
+- Access to [Google Cloud Console](https://console.cloud.google.com/)
+
+### Step 1: Create a Google Cloud Project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Click the project dropdown (top-left) → **New Project**
+3. Name it `gmail-repeatless` (or anything you prefer)
+4. Click **Create** and wait for it to provision
+5. Make sure this project is selected in the dropdown
+
+### Step 2: Enable the Gmail API
+
+1. Go to **APIs & Services** → **Library** (or search "Gmail API" in the top search bar)
+2. Search for **Gmail API**
+3. Click on it → Click **Enable**
+4. Wait for it to activate (takes a few seconds)
+
+### Step 3: Configure OAuth Consent Screen
+
+1. Go to **APIs & Services** → **OAuth consent screen**
+2. Select **External** user type → Click **Create**
+3. Fill in the required fields:
+   - **App name**: `Gmail Repeatless`
+   - **User support email**: your email
+   - **Developer contact email**: your email
+4. Click **Save and Continue**
+5. On the **Scopes** page, click **Add or Remove Scopes** and add these:
+   ```
+   https://www.googleapis.com/auth/gmail.readonly
+   https://www.googleapis.com/auth/gmail.send
+   https://www.googleapis.com/auth/gmail.modify
+   https://www.googleapis.com/auth/userinfo.email
+   https://www.googleapis.com/auth/userinfo.profile
+   ```
+6. Click **Update** → **Save and Continue**
+7. On the **Test users** page, click **Add Users**
+8. Enter **your Gmail address** (e.g., `yourname@gmail.com`)
+9. Click **Add** → **Save and Continue**
+10. Click **Back to Dashboard**
+
+> ⚠️ **Important**: While the app is in "Testing" mode, only the test users you add can log in. This is expected — you don't need to publish the app for personal use.
+
+### Step 4: Create OAuth2 Credentials
+
+1. Go to **APIs & Services** → **Credentials**
+2. Click **+ Create Credentials** → **OAuth client ID**
+3. Application type: **Web application**
+4. Name: `Gmail Repeatless Web`
+5. Under **Authorized redirect URIs**, click **Add URI** and enter:
+   ```
+   http://localhost:3001/api/auth/google/callback
+   ```
+6. Click **Create**
+7. A dialog will show your **Client ID** and **Client Secret** — copy both!
+
+### Step 5: Add Credentials to `.env`
+
+Open `backend/.env` and fill in:
+
+```env
+# Google OAuth2
+GOOGLE_CLIENT_ID=your-client-id-here.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-your-client-secret-here
+GOOGLE_REDIRECT_URI=http://localhost:3001/api/auth/google/callback
+```
+
+### Step 6: Generate Security Keys
+
+Run these commands to generate secure random keys:
+
+```bash
+# Generate TOKEN_ENCRYPTION_KEY (32-byte hex)
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+# Generate SESSION_SECRET
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Add them to `backend/.env`:
+
+```env
+TOKEN_ENCRYPTION_KEY=<paste-first-output>
+SESSION_SECRET=<paste-second-output>
+```
+
+### Verification
+
+After starting the server (`cd backend && npm start`), visit:
+```
+http://localhost:3001/api/auth/google
+```
+
+You should see the Google consent screen asking to sign in. After authorizing, you'll be redirected back to the app.
+
+### Common Issues
+
+| Issue | Fix |
+|---|---|
+| `redirect_uri_mismatch` | Make sure `http://localhost:3001/api/auth/google/callback` is in your authorized redirect URIs (exact match) |
+| `access_denied` | Add your email as a test user in OAuth consent screen |
+| `invalid_client` | Double-check Client ID and Secret in `.env` |
+| `API not enabled` | Go to APIs & Services → Library → Enable Gmail API |
+
+</details>
+
+<details>
+<summary><strong>🗄️ Supabase Setup</strong></summary>
+
+### Step 1: Create a Supabase Project
+
+1. Go to [supabase.com](https://supabase.com/) → Sign up / Log in
+2. Click **New Project**
+3. Choose an organization, name it `gmail-repeatless`, set a database password
+4. Select a region close to you → Click **Create new project**
+5. Wait for provisioning (~2 minutes)
+
+### Step 2: Enable pgvector
+
+1. Go to **SQL Editor** in your Supabase dashboard
+2. Run:
+   ```sql
+   create extension if not exists vector;
+   ```
+
+### Step 3: Create the Database Schema
+
+1. Open `backend/src/db/schema.sql` from this repo
+2. Copy its entire contents into the **SQL Editor** → Click **Run**
+3. Then open `backend/src/db/functions.sql` and run that too
+
+### Step 4: Get Your Credentials
+
+1. Go to **Settings** → **API**
+2. Copy:
+   - **Project URL** (e.g., `https://xxxxx.supabase.co`)
+   - **Service Role Key** (under "Project API keys" — the `service_role` one, NOT `anon`)
+
+3. Add to `backend/.env`:
+   ```env
+   SUPABASE_URL=https://xxxxx.supabase.co
+   SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...your-service-role-key
+   ```
+
+> ⚠️ Use the **service_role** key (not the anon key). This key has full database access and should never be exposed to the frontend.
+
+</details>
+
+<details>
+<summary><strong>🤖 AI API Keys (Gemini + NVIDIA NIM)</strong></summary>
+
+### Gemini API Key
+
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey)
+2. Click **Create API Key**
+3. Select your Google Cloud project (or create one)
+4. Copy the key and add to `backend/.env`:
+   ```env
+   GEMINI_API_KEY=AIzaSy...your-gemini-key
+   ```
+
+> 💡 The free tier allows 15 RPM for `gemini-2.5-flash` and 1500 RPM for `gemini-embedding-001`. For production use, enable billing for higher limits.
+
+### NVIDIA NIM API Key
+
+1. Go to [build.nvidia.com](https://build.nvidia.com/)
+2. Sign up / Log in with your NVIDIA account
+3. Navigate to any model (e.g., `meta/llama-3.1-8b-instruct`)
+4. Click **Get API Key** → Copy it
+5. Add to `backend/.env`:
+   ```env
+   NVIDIA_NIM_API_KEY=nvapi-...your-nim-key
+   NVIDIA_NIM_BASE_URL=https://integrate.api.nvidia.com/v1
+   NVIDIA_NIM_MODEL=meta/llama-3.1-8b-instruct
+   ```
+
+> 💡 NIM provides 1000 free API calls. The app uses NIM for cheap classification tasks, so this goes a long way.
+
+### Complete `.env` Example
+
+```env
+# Server
+PORT=3001
+NODE_ENV=development
+
+# Supabase
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...
+
+# Google OAuth2
+GOOGLE_CLIENT_ID=xxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-xxxxx
+GOOGLE_REDIRECT_URI=http://localhost:3001/api/auth/google/callback
+
+# Gemini AI
+GEMINI_API_KEY=AIzaSy...
+GEMINI_CHAT_MODEL=gemini-2.5-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
+
+# NVIDIA NIM
+NVIDIA_NIM_API_KEY=nvapi-...
+NVIDIA_NIM_BASE_URL=https://integrate.api.nvidia.com/v1
+NVIDIA_NIM_MODEL=meta/llama-3.1-8b-instruct
+
+# Security (generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+TOKEN_ENCRYPTION_KEY=<random-64-char-hex>
+SESSION_SECRET=<random-64-char-hex>
+
+# Frontend
+FRONTEND_URL=http://localhost:3000
+```
+
 </details>
 
 ---
