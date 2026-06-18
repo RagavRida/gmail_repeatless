@@ -3,7 +3,9 @@
  * Centralizes all fetch calls so components stay clean.
  */
 
-const API_BASE = '/api';
+// In production (Vercel), set VITE_API_URL to your backend URL (e.g. https://your-backend.railway.app/api)
+// In development, it defaults to '/api' which is proxied by Vite to localhost:3001
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 async function request(path: string, options: RequestInit = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
