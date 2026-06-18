@@ -22,6 +22,7 @@ const MAX_OUTPUT_LENGTH = 5000;
 // Prompt injection patterns (case-insensitive)
 const INJECTION_PATTERNS = [
   /ignore\s+(all\s+)?(previous|above|prior)\s+(instructions|prompts|rules)/i,
+  /forget\s+(all|everything|the|your)\s/i,  // "forget all of the things"
   /disregard\s+(all\s+)?(previous|above|prior)/i,
   /you\s+are\s+now\s+(a|an)\s+(?!email)/i,  // "you are now a hacker" but not "you are now an email assistant"
   /pretend\s+(to\s+be|you\s+are)\s/i,
@@ -36,6 +37,8 @@ const INJECTION_PATTERNS = [
   /output\s+(your|the)\s+(system|initial)\s+prompt/i,
   /what\s+(are|is)\s+your\s+(system|initial)\s+(prompt|instruction)/i,
   /repeat\s+(your|the)\s+(system|initial)\s+(prompt|instruction)/i,
+  /which\s+model\s+(is|are|was)\s+(used|being)/i,  // "which model is used to train you"
+  /what\s+(LLM|model|AI)\s+(are\s+you|do\s+you\s+use|powers?\s+you)/i,
 ];
 
 // Sensitive data patterns for PII detection
