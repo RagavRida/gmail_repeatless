@@ -328,17 +328,20 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
                             srcDoc={`<!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-  body { margin: 0; padding: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.6; color: #e2e8f0; background: transparent; word-wrap: break-word; overflow-wrap: break-word; }
-  a { color: #6366F1; }
+  body { margin: 0; padding: 12px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1f2937; background: #ffffff; word-wrap: break-word; overflow-wrap: break-word; }
+  a { color: #1a73e8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
   img { max-width: 100%; height: auto; }
   table { max-width: 100% !important; }
-  pre, code { white-space: pre-wrap; word-wrap: break-word; }
-  blockquote { border-left: 3px solid #374151; margin: 8px 0; padding-left: 12px; color: #94a3b8; }
+  pre, code { white-space: pre-wrap; word-wrap: break-word; background: #f3f4f6; padding: 2px 4px; border-radius: 3px; font-size: 13px; }
+  blockquote { border-left: 3px solid #d1d5db; margin: 8px 0; padding-left: 12px; color: #6b7280; }
+  hr { border: none; border-top: 1px solid #e5e7eb; margin: 12px 0; }
+  h1,h2,h3 { color: #111827; }
 </style>
 </head><body>${msg.bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '')}</body></html>`}
                             sandbox="allow-same-origin"
-                            className="w-full border-0 rounded bg-transparent"
-                            style={{ minHeight: '120px', maxHeight: '600px', overflow: 'auto' }}
+                            className="w-full border-0"
+                            style={{ minHeight: '120px', maxHeight: '600px', overflow: 'auto', borderRadius: '6px', background: '#ffffff' }}
                             onLoad={(e) => {
                               const iframe = e.target as HTMLIFrameElement;
                               if (iframe.contentDocument?.body) {
