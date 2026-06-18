@@ -21,7 +21,6 @@ export default function App() {
   const [userEmail, setUserEmail] = useState<string>('');
   const [syncStatus, setSyncStatus] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
-  const [categorizeStatus, setCategorizeStatus] = useState<string>('');
 
   // Cross-view contextual state for replying
   const [replyContextEmail, setReplyContextEmail] = useState<Email | null>(null);
@@ -74,6 +73,20 @@ export default function App() {
           if (status.status === 'completed' || status.status === 'failed') {
             clearInterval(pollInterval);
             setSyncStatus(status.status);
+            // Auto-trigger categorization after sync completes
+            if (status.status === 'completed') {
+              api.runCategorization().catch(console.error);
+              // Keep refreshing as categories update
+              const catPoll = setInterval(async () => {
+                try {
+                  const catStatus = await api.getCategorizeStatus();
+                  await loadEmails();
+                  if (catStatus.uncategorized === 0 || catStatus.progress >= 100) {
+                    clearInterval(catPoll);
+                  }
+                } catch { clearInterval(catPoll); }
+              }, 5000);
+            }
           }
         } catch {
           clearInterval(pollInterval);
@@ -118,29 +131,6 @@ export default function App() {
     setActiveTab('inbox');
   };
 
-  async function handleCategorize() {
-    try {
-      setCategorizeStatus('running');
-      await api.runCategorization();
-      // Poll for completion — reload emails every 5s until done
-      const pollId = setInterval(async () => {
-        try {
-          const status = await api.getCategorizeStatus();
-          await loadEmails(); // Refresh with new categories
-          if (status.uncategorized === 0 || status.progress >= 100) {
-            clearInterval(pollId);
-            setCategorizeStatus('done');
-          }
-        } catch {
-          clearInterval(pollId);
-          setCategorizeStatus('failed');
-        }
-      }, 5000);
-    } catch {
-      setCategorizeStatus('failed');
-    }
-  }
-
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#0D0F12] font-sans antialiased">
       {/* 60px Left Icon Navigation Sidebar */}
@@ -153,8 +143,6 @@ export default function App() {
         onLogout={handleLogout}
         onSync={handleSync}
         syncStatus={syncStatus}
-        onCategorize={handleCategorize}
-        categorizeStatus={categorizeStatus}
       />
 
       {/* Main Content Pane wrapper */}
