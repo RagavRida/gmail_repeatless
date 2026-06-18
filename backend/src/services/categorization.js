@@ -3,7 +3,7 @@
  * Uses NIM as primary (cheap, high-volume) with Gemini fallback.
  * Classifies each message/thread into one of the predefined categories.
  */
-import { aiGenerate } from '../ai/router.js';
+import { aiGenerate, waitForInteractive } from '../ai/router.js';
 import { PROMPTS } from '../ai/prompts/index.js';
 import { CATEGORIES } from '../config/index.js';
 import { getSupabase } from '../db/client.js';
@@ -23,6 +23,9 @@ export async function categorizeMessage(messageId) {
 
   if (!msg) throw new Error(`Message ${messageId} not found`);
   if (msg.category !== 'uncategorized') return msg.category; // Already categorized
+
+  // Yield to interactive requests (chat) before processing
+  await waitForInteractive();
 
   const prompt = PROMPTS.categorize(msg.subject, msg.from_address, msg.snippet);
   const result = await aiGenerate('classify', { prompt, opts: { temperature: 0.0, maxTokens: 30 } });
@@ -55,6 +58,9 @@ export async function batchCategorize(accountId) {
 
     for (const msg of uncategorized) {
       try {
+        // Yield to interactive requests (chat) before processing
+        await waitForInteractive();
+
         await categorizeMessage(msg.id);
         totalProcessed++;
         consecutiveErrors = 0;

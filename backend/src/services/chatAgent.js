@@ -22,68 +22,412 @@ import { logger } from '../middleware/logger.js';
 export async function processMessage(accountId, conversationId, userMessage) {
   const db = getSupabase();
 
+  // ── Input validation & sanitization ──
+  if (!userMessage || typeof userMessage !== 'string') {
+    return gracefulResponse(db, conversationId, 'Please type a message to get started!', userMessage);
+  }
+
+  // Trim and limit length (prevent prompt injection via massive inputs)
+  const sanitized = userMessage.trim().substring(0, 2000);
+  if (sanitized.length < 2) {
+    return gracefulResponse(db, conversationId, 'Could you provide a bit more detail? I need at least a few words to search your emails.', sanitized);
+  }
+
   // Save user message
-  await db.from('chat_messages').insert({
-    conversation_id: conversationId,
-    role: 'user',
-    content: userMessage,
+  try {
+    await db.from('chat_messages').insert({
+      conversation_id: conversationId,
+      role: 'user',
+      content: sanitized,
+    });
+  } catch (dbErr) {
+    logger.error(`[ChatAgent] Failed to save user message: ${dbErr.message}`);
+    // Continue anyway — the response is more important than persisting the user message
+  }
+
+  let content, sources = [], uniqueCitations = [];
+
+  try {
+    // Detect if this is a newsletter/news digest query
+    const isNewsQuery = detectNewsletterQuery(sanitized);
+
+    if (isNewsQuery) {
+      // Specialized newsletter intelligence pipeline
+      logger.info(`[ChatAgent] Detected newsletter query, using digest pipeline`);
+      const result = await newsletterDigestPipeline(accountId, sanitized);
+      content = result.content;
+      sources = result.sources || [];
+      uniqueCitations = result.citations || [];
+    } else {
+      // Standard RAG pipeline
+      // Step 1: Parse implicit filters from the question
+      let filters;
+      try {
+        filters = await extractFilters(sanitized);
+        logger.info(`[ChatAgent] Extracted filters:`, JSON.stringify(filters));
+      } catch (filterErr) {
+        logger.warn(`[ChatAgent] Filter extraction failed, using defaults: ${filterErr.message}`);
+        filters = { sender: null, category: null, date_from: null, date_to: null, search_terms: sanitized, expanded_terms: null };
+      }
+
+      // Step 2: Hybrid retrieval — multiple strategies merged
+      let contextBlocks = [];
+      try {
+        contextBlocks = await hybridRetrieval(accountId, sanitized, filters);
+        logger.info(`[ChatAgent] Retrieved ${contextBlocks.length} context blocks`);
+      } catch (retrievalErr) {
+        logger.error(`[ChatAgent] Retrieval failed: ${retrievalErr.message}`);
+        // Continue with empty context — the synthesis will handle it gracefully
+      }
+
+      // Step 3: Load recent conversation history for context
+      let conversationHistory = [];
+      try {
+        conversationHistory = await getRecentHistory(conversationId, 6);
+      } catch (histErr) {
+        logger.warn(`[ChatAgent] Failed to load history: ${histErr.message}`);
+      }
+
+      // Step 4: Grounded generation with source attribution
+      if (contextBlocks.length === 0) {
+        // No relevant emails found — give a helpful response instead of hallucinating
+        content = generateNoResultsResponse(sanitized, filters);
+      } else {
+        const prompt = PROMPTS.chatSynthesis(sanitized, contextBlocks, conversationHistory);
+        content = await aiGenerate('generate', {
+          prompt,
+          opts: {
+            systemInstruction: 'You are an AI email assistant. Answer questions exclusively from the user\'s emails. Always cite sources. Never hallucinate. If the provided emails don\'t contain the answer, say so clearly.',
+            temperature: 0.3,
+            maxTokens: 1500,
+          },
+        });
+      }
+
+      // Build sources/citations from retrieved context
+      sources = contextBlocks.map((c) => ({
+        message_id: c.id,
+        thread_id: c.thread_id,
+        subject: c.subject,
+        from_address: c.from_address,
+      }));
+
+      const citations = contextBlocks.map((c) => ({
+        sender: extractSenderName(c.from_address),
+        senderEmail: extractEmail(c.from_address),
+        subject: c.subject || '(no subject)',
+        time: formatDate(c.internal_date),
+      }));
+
+      uniqueCitations = deduplicateCitations(citations);
+    }
+  } catch (pipelineErr) {
+    // Catch-all: if ANYTHING in the pipeline crashes, return a graceful message
+    logger.error(`[ChatAgent] Pipeline failed: ${pipelineErr.message}`);
+    content = generateErrorResponse(pipelineErr);
+  }
+
+  // Save assistant response (don't crash if this fails)
+  try {
+    await db.from('chat_messages').insert({
+      conversation_id: conversationId,
+      role: 'assistant',
+      content,
+      sources: JSON.stringify(sources),
+    });
+  } catch (saveErr) {
+    logger.error(`[ChatAgent] Failed to save response: ${saveErr.message}`);
+  }
+
+  // Update conversation title if it's the first message
+  try {
+    const { data: conv } = await db.from('chat_conversations').select('title').eq('id', conversationId).single();
+    if (!conv?.title || conv.title === 'New Investigation') {
+      const title = sanitized.length > 50 ? sanitized.substring(0, 47) + '...' : sanitized;
+      await db.from('chat_conversations').update({ title, updated_at: new Date().toISOString() }).eq('id', conversationId);
+    }
+  } catch (titleErr) {
+    // Non-critical — don't crash over a title update
+    logger.warn(`[ChatAgent] Failed to update title: ${titleErr.message}`);
+  }
+
+  return { content, sources, citations: uniqueCitations || [] };
+}
+
+/**
+ * Return a graceful response for edge cases (empty input, etc.)
+ */
+async function gracefulResponse(db, conversationId, message, userMessage) {
+  try {
+    if (userMessage) {
+      await db.from('chat_messages').insert({ conversation_id: conversationId, role: 'user', content: userMessage });
+    }
+    await db.from('chat_messages').insert({ conversation_id: conversationId, role: 'assistant', content: message });
+  } catch (e) { /* ignore save errors for graceful fallbacks */ }
+  return { content: message, sources: [], citations: [] };
+}
+
+/**
+ * Generate a helpful "no results" message instead of empty/hallucinated response.
+ */
+function generateNoResultsResponse(query, filters) {
+  const suggestions = [];
+
+  if (filters?.search_terms) {
+    suggestions.push(`• Try broader search terms — I searched for: "${filters.search_terms}"`);
+  }
+  if (filters?.category) {
+    suggestions.push(`• I filtered to the "${filters.category}" category — try without the category filter`);
+  }
+  if (filters?.date_from) {
+    suggestions.push(`• I searched within a specific date range — try asking without date restrictions`);
+  }
+
+  suggestions.push(
+    '• Try rephrasing your question with different keywords',
+    '• Ask about a specific sender or email subject you remember',
+    '• If your emails were recently synced, some may still be processing'
+  );
+
+  return `I searched through your emails but couldn't find anything directly relevant to "${query}".\n\nHere are some suggestions:\n${suggestions.join('\n')}\n\nI can help with questions like:\n- "What did [person] email me about?"\n- "Find emails about [topic]"\n- "Summarize my recent newsletters"\n- "Any updates on [project]?"`;
+}
+
+/**
+ * Generate a user-friendly error message based on the error type.
+ */
+function generateErrorResponse(error) {
+  const msg = error?.message || '';
+
+  if (msg.includes('429') || msg.includes('rate') || msg.includes('quota')) {
+    return '⏳ I\'m currently experiencing high demand on the AI service. The system is processing many emails in the background. Please try again in about 30 seconds — your request will be prioritized over background tasks.';
+  }
+
+  if (msg.includes('timeout') || msg.includes('ETIMEDOUT')) {
+    return '⏱️ The request took too long to process. This can happen with complex queries. Could you try a simpler or more specific question?';
+  }
+
+  if (msg.includes('network') || msg.includes('ECONNREFUSED')) {
+    return '🌐 I\'m having trouble connecting to the AI service. Please check your internet connection and try again.';
+  }
+
+  return `I encountered an issue processing your request. Here\'s what you can try:\n\n• **Wait a moment** — AI services may be temporarily busy\n• **Simplify your question** — shorter, more specific queries work best\n• **Try a different angle** — ask about a specific sender, subject, or date\n\nIf this keeps happening, the AI providers (Gemini/NIM) may be experiencing rate limits from background processing.`;
+}
+
+// ================================================================
+// NEWSLETTER INTELLIGENCE PIPELINE
+// ================================================================
+
+/**
+ * Detect if the user's question is about newsletters or news digests.
+ */
+function detectNewsletterQuery(message) {
+  const lower = message.toLowerCase();
+  const newsPatterns = [
+    /\bnews\b/, /\bnewsletter/, /\bdigest\b/, /\bheadline/, /\btech.*news/,
+    /\blatest.*news/, /\brecent.*news/, /\bimportant.*news/, /\btop.*stories/,
+    /\bwhat.*happened/, /\bwhat's.*new/, /\bupdates.*from/, /\bnews.*items/,
+    /\bnews.*past/, /\bnews.*last/, /\bnews.*week/, /\bnews.*days/,
+    /\btrending/, /\bbreaking/, /\bannouncement/,
+  ];
+  return newsPatterns.some(p => p.test(lower));
+}
+
+/**
+ * Specialized pipeline for newsletter queries:
+ * 1. Fetch all newsletter emails from the relevant date range
+ * 2. Extract news items from each newsletter using AI
+ * 3. Deduplicate across sources by topic_key
+ * 4. Synthesize a clean, organized response
+ */
+async function newsletterDigestPipeline(accountId, userMessage) {
+  const db = getSupabase();
+
+  // Parse date range from the query
+  const dateRange = parseDateRange(userMessage);
+  logger.info(`[NewsDigest] Date range: ${dateRange.from} to ${dateRange.to}`);
+
+  // Fetch newsletter-category emails from the date range
+  let query = db.from('messages')
+    .select('id, thread_id, subject, from_address, internal_date, body_text, snippet, category')
+    .eq('account_id', accountId)
+    .gte('internal_date', dateRange.from)
+    .lte('internal_date', dateRange.to)
+    .order('internal_date', { ascending: false });
+
+  // Filter to newsletter category if categorized, otherwise look for newsletter-like senders
+  const { data: newsletters } = await query
+    .in('category', ['newsletter', 'uncategorized'])
+    .limit(30);
+
+  if (!newsletters || newsletters.length === 0) {
+    return {
+      content: `I couldn't find any newsletter emails in your inbox from ${dateRange.from.split('T')[0]} to ${dateRange.to.split('T')[0]}. This could be because:\n\n• Your newsletters haven't been categorized yet (categorization is still running in the background)\n• You don't have newsletter subscriptions that sent emails in this period\n\nTry asking again in a few minutes, or ask about a different date range.`,
+      sources: [],
+      citations: [],
+    };
+  }
+
+  // Filter to only likely newsletters (subject patterns, known newsletter senders)
+  const likelyNewsletters = newsletters.filter(msg => {
+    const sub = (msg.subject || '').toLowerCase();
+    const from = (msg.from_address || '').toLowerCase();
+    return (
+      msg.category === 'newsletter' ||
+      sub.includes('newsletter') || sub.includes('digest') || sub.includes('weekly') ||
+      sub.includes('daily') || sub.includes('roundup') || sub.includes('edition') ||
+      sub.includes('update') || sub.includes('briefing') || sub.includes('report') ||
+      from.includes('newsletter') || from.includes('digest') || from.includes('substack') ||
+      from.includes('beehiiv') || from.includes('morning') || from.includes('noreply') ||
+      (msg.body_text && msg.body_text.length > 500) // Long emails are likely newsletters
+    );
   });
 
-  // Step 1: Parse implicit filters from the question
-  const filters = await extractFilters(userMessage);
-  logger.info(`[ChatAgent] Extracted filters:`, JSON.stringify(filters));
+  const toProcess = likelyNewsletters.length > 0 ? likelyNewsletters : newsletters;
+  logger.info(`[NewsDigest] Found ${toProcess.length} newsletter emails to process`);
 
-  // Step 2: Hybrid retrieval — multiple strategies merged
-  const contextBlocks = await hybridRetrieval(accountId, userMessage, filters);
-  logger.info(`[ChatAgent] Retrieved ${contextBlocks.length} context blocks`);
+  // Extract news items from each newsletter (parallel with limit)
+  const allNewsItems = [];
+  const processBatch = toProcess.slice(0, 15); // Cap at 15 newsletters to avoid overload
 
-  // Step 3: Load recent conversation history for context
-  const conversationHistory = await getRecentHistory(conversationId, 6);
+  for (const msg of processBatch) {
+    try {
+      const date = msg.internal_date ? new Date(msg.internal_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      const prompt = PROMPTS.newsletterDigestExtract(
+        msg.subject || '',
+        extractSenderName(msg.from_address),
+        date,
+        msg.body_text || msg.snippet || ''
+      );
 
-  // Step 4: Grounded generation with source attribution
-  const prompt = PROMPTS.chatSynthesis(userMessage, contextBlocks, conversationHistory);
+      const result = await aiGenerate('generate', {
+        prompt,
+        opts: { temperature: 0.1, maxTokens: 1000, responseMimeType: 'application/json' },
+      });
+
+      // Parse the JSON response
+      const cleaned = result.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      const items = JSON.parse(cleaned);
+
+      if (Array.isArray(items)) {
+        items.forEach(item => {
+          item.source_newsletter = extractSenderName(msg.from_address);
+          item.source_email = extractEmail(msg.from_address);
+          item.source_subject = msg.subject;
+          item.source_date = date;
+          item.message_id = msg.id;
+          item.thread_id = msg.thread_id;
+        });
+        allNewsItems.push(...items);
+      }
+
+      logger.info(`[NewsDigest] Extracted ${items?.length || 0} items from "${msg.subject}"`);
+    } catch (err) {
+      logger.warn(`[NewsDigest] Failed to extract from "${msg.subject}": ${err.message}`);
+    }
+  }
+
+  if (allNewsItems.length === 0) {
+    return {
+      content: `I found ${toProcess.length} newsletter emails from the past period, but couldn't extract any distinct news items from them. The newsletters may contain non-news content (promotions, personal updates, etc.).`,
+      sources: toProcess.map(m => ({ message_id: m.id, thread_id: m.thread_id, subject: m.subject, from_address: m.from_address })),
+      citations: deduplicateCitations(toProcess.map(m => ({
+        sender: extractSenderName(m.from_address),
+        senderEmail: extractEmail(m.from_address),
+        subject: m.subject || '(no subject)',
+        time: formatDate(m.internal_date),
+      }))),
+    };
+  }
+
+  // Deduplicate by topic_key
+  const deduped = deduplicateNewsItems(allNewsItems);
+  logger.info(`[NewsDigest] ${allNewsItems.length} total items → ${deduped.length} after dedup`);
+
+  // Synthesize the final response
+  const synthesisPrompt = PROMPTS.newsletterDigestSynthesize(deduped, userMessage);
   const content = await aiGenerate('generate', {
-    prompt,
+    prompt: synthesisPrompt,
     opts: {
-      systemInstruction: 'You are an AI email assistant. Answer questions exclusively from the user\'s emails. Always cite sources. Never hallucinate.',
+      systemInstruction: 'You are an AI email assistant presenting a curated news digest from the user\'s newsletter emails. Be thorough, well-organized, and cite sources.',
       temperature: 0.3,
-      maxTokens: 1500,
+      maxTokens: 3000,
     },
   });
 
-  // Build sources/citations from retrieved context
-  const sources = contextBlocks.map((c) => ({
-    message_id: c.id,
-    thread_id: c.thread_id,
-    subject: c.subject,
-    from_address: c.from_address,
+  // Build citations from processed newsletters
+  const processedSources = processBatch.map(m => ({
+    message_id: m.id,
+    thread_id: m.thread_id,
+    subject: m.subject,
+    from_address: m.from_address,
   }));
 
-  const citations = contextBlocks.map((c) => ({
-    sender: extractSenderName(c.from_address),
-    senderEmail: extractEmail(c.from_address),
-    subject: c.subject || '(no subject)',
-    time: formatDate(c.internal_date),
-  }));
+  const processedCitations = deduplicateCitations(processBatch.map(m => ({
+    sender: extractSenderName(m.from_address),
+    senderEmail: extractEmail(m.from_address),
+    subject: m.subject || '(no subject)',
+    time: formatDate(m.internal_date),
+  })));
 
-  const uniqueCitations = deduplicateCitations(citations);
+  return { content, sources: processedSources, citations: processedCitations };
+}
 
-  // Save assistant response with sources
-  await db.from('chat_messages').insert({
-    conversation_id: conversationId,
-    role: 'assistant',
-    content,
-    sources: JSON.stringify(sources),
-  });
+/**
+ * Parse a date range from the user's message.
+ * Handles "past 4 days", "last week", "past 2 weeks", etc.
+ */
+function parseDateRange(message) {
+  const now = new Date();
+  let daysBack = 7; // Default to 1 week
 
-  // Update conversation title if it's the first message
-  const { data: conv } = await db.from('chat_conversations').select('title').eq('id', conversationId).single();
-  if (!conv?.title || conv.title === 'New Investigation') {
-    const title = userMessage.length > 50 ? userMessage.substring(0, 47) + '...' : userMessage;
-    await db.from('chat_conversations').update({ title, updated_at: new Date().toISOString() }).eq('id', conversationId);
+  const dayMatch = message.match(/(\d+)\s*day/i);
+  const weekMatch = message.match(/(\d+)\s*week/i);
+  const monthMatch = message.match(/(\d+)\s*month/i);
+
+  if (dayMatch) daysBack = parseInt(dayMatch[1]);
+  else if (weekMatch) daysBack = parseInt(weekMatch[1]) * 7;
+  else if (monthMatch) daysBack = parseInt(monthMatch[1]) * 30;
+  else if (/today/i.test(message)) daysBack = 1;
+  else if (/yesterday/i.test(message)) daysBack = 2;
+  else if (/this week/i.test(message)) daysBack = 7;
+  else if (/last week/i.test(message)) daysBack = 14;
+
+  const from = new Date(now);
+  from.setDate(from.getDate() - daysBack);
+
+  return {
+    from: from.toISOString(),
+    to: now.toISOString(),
+  };
+}
+
+/**
+ * Deduplicate news items by topic_key, merging sources.
+ */
+function deduplicateNewsItems(items) {
+  const byKey = new Map();
+
+  for (const item of items) {
+    const key = (item.topic_key || item.title || '').toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    if (!key) continue;
+
+    if (byKey.has(key)) {
+      const existing = byKey.get(key);
+      // Merge sources
+      if (!existing.all_sources) existing.all_sources = [existing.source_newsletter];
+      if (!existing.all_sources.includes(item.source_newsletter)) {
+        existing.all_sources.push(item.source_newsletter);
+      }
+      // Keep longer summary
+      if ((item.summary || '').length > (existing.summary || '').length) {
+        existing.summary = item.summary;
+      }
+    } else {
+      byKey.set(key, { ...item, all_sources: [item.source_newsletter] });
+    }
   }
 
-  return { content, sources, citations: uniqueCitations };
+  return [...byKey.values()];
 }
 
 // ================================================================

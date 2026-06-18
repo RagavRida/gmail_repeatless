@@ -85,15 +85,21 @@ Reply:`.trim(),
   // CHAT AGENT (RAG)
   // ============================================================
   chatFilterExtraction: (userQuestion) => `
-Analyze the user's question about their emails and extract any implicit search filters. Return a JSON object with these fields (use null for any not mentioned):
+Analyze the user's question about their emails and extract search filters. Return a JSON object with these fields (use null for any not mentioned):
 
 {
   "sender": "sender name or email if mentioned, null otherwise",
   "category": "one of: newsletter, job_recruitment, finance, notifications, personal, work_professional — or null",
   "date_from": "ISO date string for start of date range, or null",
   "date_to": "ISO date string for end of date range, or null",
-  "search_terms": "key search terms to look for, or null"
+  "search_terms": "key search terms from the question, space-separated",
+  "expanded_terms": "additional related/synonym terms that emails about this topic might use. Think broadly about what words an email on this topic would contain. Space-separated. IMPORTANT: always include synonyms, related words, and alternative phrasings."
 }
+
+Examples of good expanded_terms:
+- Question "any giveaway?" → search_terms: "giveaway selected", expanded_terms: "won winner congratulations prize contest raffle reward swag"
+- Question "job applications" → search_terms: "job application", expanded_terms: "hiring interview recruiter position role offer resume career opportunity"
+- Question "billing issues" → search_terms: "billing", expanded_terms: "invoice payment charge overdue subscription renewal amount due receipt"
 
 Today's date is ${new Date().toISOString().split('T')[0]}.
 
@@ -143,4 +149,49 @@ Body:
 ${(body || '').substring(0, 3000)}
 
 JSON:`.trim(),
+
+  // ============================================================
+  // NEWSLETTER DIGEST — Multi-source extraction + dedup
+  // ============================================================
+  newsletterDigestExtract: (subject, from, date, body) => `
+Extract ALL distinct tech/industry news items from this newsletter email. For each item, return a JSON object:
+
+{
+  "title": "short headline (max 10 words)",
+  "summary": "1-2 sentence summary of the news item",
+  "topic_key": "lowercase-hyphenated-unique-key for dedup (e.g. openai-gpt5-release, apple-wwdc-recap)",
+  "source_newsletter": "${from}",
+  "source_date": "${date}"
+}
+
+Return ONLY a valid JSON array. If there are no distinct news items, return [].
+Focus on: product launches, funding rounds, AI breakthroughs, company news, tech policy, open source releases.
+Skip: ads, promotional content, job listings, event invitations.
+
+Newsletter:
+Subject: ${subject}
+From: ${from}
+Date: ${date}
+Body:
+${(body || '').substring(0, 4000)}
+
+JSON:`.trim(),
+
+  newsletterDigestSynthesize: (newsItems, userQuestion) => `
+You are an AI email assistant. The user asked about news from their newsletter emails. Below is a deduplicated list of news items extracted from their newsletters.
+
+Present these as a clean, well-organized response. Follow these rules:
+1. Group by topic area (AI/ML, Startups, Big Tech, Open Source, etc.)
+2. For each item, include the headline, a concise summary, and which newsletter(s) reported it
+3. If multiple newsletters covered the same story, merge them and note all sources
+4. Use bullet points and clear formatting
+5. Highlight the most important/impactful stories first within each group
+6. Include dates for each item
+
+User's question: ${userQuestion}
+
+News items (JSON):
+${JSON.stringify(newsItems, null, 2)}
+
+Organized response:`.trim(),
 };

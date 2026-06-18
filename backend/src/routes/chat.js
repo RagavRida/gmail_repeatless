@@ -106,7 +106,7 @@ router.get('/:id/messages', requireAuth, async (req, res, next) => {
  * POST /api/chat/conversations/:id/messages
  * Send a message to the chat agent, get AI response with sources
  */
-router.post('/:id/messages', requireAuth, async (req, res, next) => {
+router.post('/:id/messages', requireAuth, async (req, res) => {
   try {
     const { message } = req.body;
     if (!message) {
@@ -117,12 +117,19 @@ router.post('/:id/messages', requireAuth, async (req, res, next) => {
 
     res.json({
       content: result.content,
-      sources: result.sources,
-      citations: result.citations,
+      sources: result.sources || [],
+      citations: result.citations || [],
       time: formatTime(new Date().toISOString()),
     });
   } catch (error) {
-    next(error);
+    // Even if processMessage itself somehow throws, never send raw errors to the user
+    logger.error(`[ChatRoute] Unhandled error: ${error.message}`);
+    res.json({
+      content: 'I encountered an unexpected error. Please try again in a moment. If this keeps happening, the AI services may be temporarily unavailable.',
+      sources: [],
+      citations: [],
+      time: formatTime(new Date().toISOString()),
+    });
   }
 });
 

@@ -1,11 +1,15 @@
 /**
- * Sync routes: trigger and monitor Gmail sync operations
+ * Sync routes: trigger and monitor Gmail sync operations.
+ * 
+ * Priority order after sync:
+ * 1. NEW emails → categorize immediately → embed immediately
+ * 2. Remaining old uncategorized/unembedded → continue in background
  */
 import { Router } from 'express';
 import { requireAuth } from '../auth/session.js';
 import { fullSync, incrementalSync } from '../gmail/sync.js';
 import { batchSummarize } from '../services/summarization.js';
-import { batchCategorize } from '../services/categorization.js';
+import { categorizeMessage } from '../services/categorization.js';
 import { aiEmbed } from '../ai/router.js';
 import { getSupabase } from '../db/client.js';
 import { logger } from '../middleware/logger.js';
@@ -15,6 +19,7 @@ const router = Router();
 /**
  * POST /api/sync/start
  * Triggers a full or incremental sync. Runs AI processing after sync.
+ * Priority: new emails get categorized + embedded FIRST, then old emails.
  */
 router.post('/start', requireAuth, async (req, res, next) => {
   try {
@@ -34,15 +39,56 @@ router.post('/start', requireAuth, async (req, res, next) => {
           result = await incrementalSync(accountId);
         }
 
-        logger.info(`Sync completed: ${JSON.stringify(result)}`);
+        logger.info(`Sync completed: ${JSON.stringify({ ...result, newMessageIds: result.newMessageIds?.length || 0 })}`);
 
-        // Post-sync AI processing
-        logger.info('Running post-sync AI processing...');
-        await batchCategorize(accountId);
-        await batchSummarize(accountId);
-        await generateEmbeddings(accountId);
+        const newIds = result.newMessageIds || [];
 
-        logger.info('Post-sync AI processing completed');
+        if (newIds.length > 0) {
+          // ═══════════════════════════════════════════════════
+          // PRIORITY 1: Process NEW emails immediately
+          // ═══════════════════════════════════════════════════
+          logger.info(`[PostSync] Priority processing ${newIds.length} new emails...`);
+
+          // 1a. Categorize new emails immediately (so they show in correct UI category)
+          let categorized = 0;
+          for (const msgId of newIds) {
+            try {
+              await categorizeMessage(msgId);
+              categorized++;
+            } catch (err) {
+              logger.warn(`[PostSync] Failed to categorize new msg ${msgId}: ${err.message}`);
+            }
+          }
+          logger.info(`[PostSync] Categorized ${categorized}/${newIds.length} new emails`);
+
+          // 1b. Embed new emails immediately (so they're searchable via vector)
+          let embedded = 0;
+          await embedSpecificMessages(accountId, newIds);
+          embedded = newIds.length;
+          logger.info(`[PostSync] Embedded ${embedded} new emails`);
+        }
+
+        // ═══════════════════════════════════════════════════
+        // PRIORITY 2: Continue processing old emails in background
+        // ═══════════════════════════════════════════════════
+        logger.info('[PostSync] Background: processing remaining uncategorized/unembedded emails...');
+
+        // 2a. Categorize remaining old uncategorized messages
+        const { batchCategorize } = await import('../services/categorization.js');
+        batchCategorize(accountId)
+          .then(n => { if (n > 0) logger.info(`[PostSync] Background categorized ${n} remaining messages`); })
+          .catch(err => logger.error(`[PostSync] Background categorization failed: ${err.message}`));
+
+        // 2b. Embed remaining old un-embedded messages
+        generateEmbeddings(accountId)
+          .then(() => logger.info(`[PostSync] Background embedding complete`))
+          .catch(err => logger.error(`[PostSync] Background embedding failed: ${err.message}`));
+
+        // 2c. Summarize
+        batchSummarize(accountId)
+          .catch(err => logger.error(`[PostSync] Summarization failed: ${err.message}`));
+
+        logger.info('[PostSync] All background tasks launched');
       } catch (err) {
         logger.error(`Background sync failed: ${err.message}`);
       }
@@ -79,9 +125,50 @@ router.get('/status', requireAuth, async (req, res, next) => {
   }
 });
 
+// ================================================================
+// EMBEDDING FUNCTIONS
+// ================================================================
+
 /**
- * Generate embeddings for messages that don't have them yet.
- * Processes in batches with throttling to respect Gemini embedding API limits.
+ * Embed specific messages by ID — used for priority embedding of new emails.
+ * No throttling needed since these are small batches (< 50 usually).
+ */
+async function embedSpecificMessages(accountId, messageIds) {
+  if (!messageIds || messageIds.length === 0) return;
+
+  const db = getSupabase();
+  let embedded = 0;
+
+  for (const msgId of messageIds) {
+    try {
+      const { data: msg } = await db.from('messages')
+        .select('id, subject, body_text, snippet, embedding')
+        .eq('id', msgId)
+        .single();
+
+      // Skip if already embedded or no text
+      if (!msg || msg.embedding) continue;
+
+      const text = `${msg.subject || ''} ${msg.body_text || msg.snippet || ''}`.trim();
+      if (!text) continue;
+
+      const embedding = await aiEmbed(text.substring(0, 2000));
+      await db.from('messages').update({ embedding }).eq('id', msgId);
+      embedded++;
+
+      // Light throttle: 300ms between new email embeddings (fast for small batches)
+      await new Promise(r => setTimeout(r, 300));
+    } catch (err) {
+      logger.warn(`[EmbedNew] Failed to embed ${msgId}: ${err.message}`);
+    }
+  }
+
+  logger.info(`[EmbedNew] Embedded ${embedded}/${messageIds.length} new messages`);
+}
+
+/**
+ * Generate embeddings for ALL remaining messages without them.
+ * Heavier throttling since this processes hundreds/thousands.
  */
 async function generateEmbeddings(accountId) {
   const db = getSupabase();
@@ -108,7 +195,7 @@ async function generateEmbeddings(accountId) {
         totalProcessed++;
         consecutiveErrors = 0;
 
-        // Throttle: 1s between embedding calls (Gemini embedding has separate quota)
+        // Throttle: 1s between embedding calls (background, not urgent)
         await new Promise((r) => setTimeout(r, 1000));
       } catch (err) {
         consecutiveErrors++;
@@ -157,4 +244,3 @@ router.post('/embeddings', requireAuth, async (req, res) => {
 });
 
 export default router;
-

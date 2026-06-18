@@ -160,6 +160,7 @@ export async function incrementalSync(accountId) {
   const jobId = job.id;
   let added = 0, deleted = 0, modified = 0;
   let latestHistoryId = account.gmail_history_id;
+  const newMessageIds = []; // Track IDs of newly synced messages
 
   try {
     let pageToken = null;
@@ -185,7 +186,10 @@ export async function incrementalSync(accountId) {
         // Messages added
         if (record.messagesAdded) {
           const tasks = record.messagesAdded.map((m) =>
-            limit(() => fetchAndPersistMessage(gmail, db, accountId, m.message.id))
+            limit(async () => {
+              await fetchAndPersistMessage(gmail, db, accountId, m.message.id);
+              newMessageIds.push(m.message.id);
+            })
           );
           await Promise.allSettled(tasks);
           added += record.messagesAdded.length;
@@ -231,16 +235,9 @@ export async function incrementalSync(accountId) {
       stats: { added, deleted, modified },
     }).eq('id', jobId);
 
-    logger.info(`Incremental sync completed: +${added} -${deleted} ~${modified}`);
+    logger.info(`Incremental sync completed: +${added} -${deleted} ~${modified} (${newMessageIds.length} new IDs tracked)`);
 
-    // Auto-categorize new messages from incremental sync
-    if (added > 0) {
-      batchCategorize(accountId).then((n) => {
-        if (n > 0) logger.info(`Auto-categorized ${n} messages post-incremental-sync`);
-      }).catch((err) => logger.error(`Post-sync categorization failed: ${err.message}`));
-    }
-
-    return { jobId, added, deleted, modified };
+    return { jobId, added, deleted, modified, newMessageIds };
 
   } catch (error) {
     // If historyId is too old, Gmail returns 404 — fall back to full sync
