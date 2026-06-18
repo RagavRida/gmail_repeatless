@@ -16,8 +16,8 @@ export interface Email {
   snippet: string;
   time: string;
   category: EmailCategory;
-  aiSummary: string;
-  threadSummary: string;
+  aiSummary: string | null;
+  threadSummary: string | null;
   thread: EmailMessage[];
   read: boolean;
 }
