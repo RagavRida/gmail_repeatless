@@ -1,0 +1,25 @@
+{
+  "name": "gmail-repeatless-evals",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "LLM evaluation suite for Gmail Repeatless AI features",
+  "scripts": {
+    "eval": "node --env-file=../backend/.env run-evals.js",
+    "eval:judge": "node --env-file=../backend/.env run-evals.js --mode judge",
+    "eval:human": "node --env-file=../backend/.env run-evals.js --mode human",
+    "eval:judge:chat": "node --env-file=../backend/.env run-evals.js --mode judge --suite chat_rag",
+    "eval:judge:compose": "node --env-file=../backend/.env run-evals.js --mode judge --suite compose",
+    "eval:judge:summarization": "node --env-file=../backend/.env run-evals.js --mode judge --suite summarization",
+    "eval:judge:categorization": "node --env-file=../backend/.env run-evals.js --mode judge --suite categorization",
+    "eval:categorization": "node --env-file=../backend/.env run-evals.js --suite categorization",
+    "eval:summarization": "node --env-file=../backend/.env run-evals.js --suite summarization",
+    "eval:chat": "node --env-file=../backend/.env run-evals.js --suite chat",
+    "eval:compose": "node --env-file=../backend/.env run-evals.js --suite compose",
+    "eval:newsletter": "node --env-file=../backend/.env run-evals.js --suite newsletter",
+    "eval:router": "node --env-file=../backend/.env run-evals.js --suite router"
+  },
+  "dependencies": {
+    "@google/genai": "^1.0.0",
+    "openai": "^4.80.0"
+  }
+}
