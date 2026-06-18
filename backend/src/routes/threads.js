@@ -40,7 +40,7 @@ router.get('/', requireAuth, async (req, res, next) => {
     // For each thread, fetch messages to build the frontend shape
     const enriched = await Promise.all((threads || []).map(async (thread) => {
       const { data: messages } = await db.from('messages')
-        .select('id, from_address, internal_date, body_text, snippet, subject, ai_summary, is_from_user')
+        .select('id, from_address, internal_date, body_text, body_html, snippet, subject, ai_summary, is_from_user')
         .eq('thread_id', thread.id)
         .order('internal_date', { ascending: true });
 
@@ -177,6 +177,7 @@ function mapMessageToFrontend(msg) {
     senderEmail: extractEmail(msg.from_address),
     time: formatDateTimeDisplay(msg.internal_date),
     body: sanitizeBodyText(msg.body_text || msg.snippet || ''),
+    bodyHtml: msg.body_html || null,
   };
 }
 

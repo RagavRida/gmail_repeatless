@@ -322,13 +322,39 @@ export default function InboxView({ emails, setEmails, onComposeReply }: InboxVi
                           <span className="text-[10px] font-mono text-gray-400">{msg.time}</span>
                         </div>
                         
-                        {/* Body content message formatted */}
-                        <div 
-                          className="text-xs text-gray-300 font-sans whitespace-pre-line leading-relaxed select-text select-all-target selection:bg-[#6366F1]/40"
-                          style={{ overflowWrap: 'break-word', wordBreak: 'break-word', overflowX: 'hidden', maxWidth: '100%' }}
-                        >
-                          {msg.body}
-                        </div>
+                        {/* Body content — render HTML like Gmail or plain text fallback */}
+                        {msg.bodyHtml ? (
+                          <iframe
+                            srcDoc={`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { margin: 0; padding: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; line-height: 1.6; color: #e2e8f0; background: transparent; word-wrap: break-word; overflow-wrap: break-word; }
+  a { color: #6366F1; }
+  img { max-width: 100%; height: auto; }
+  table { max-width: 100% !important; }
+  pre, code { white-space: pre-wrap; word-wrap: break-word; }
+  blockquote { border-left: 3px solid #374151; margin: 8px 0; padding-left: 12px; color: #94a3b8; }
+</style>
+</head><body>${msg.bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '')}</body></html>`}
+                            sandbox="allow-same-origin"
+                            className="w-full border-0 rounded bg-transparent"
+                            style={{ minHeight: '120px', maxHeight: '600px', overflow: 'auto' }}
+                            onLoad={(e) => {
+                              const iframe = e.target as HTMLIFrameElement;
+                              if (iframe.contentDocument?.body) {
+                                iframe.style.height = Math.min(iframe.contentDocument.body.scrollHeight + 20, 600) + 'px';
+                              }
+                            }}
+                            title={`Email from ${msg.sender}`}
+                          />
+                        ) : (
+                          <div 
+                            className="text-xs text-gray-300 font-sans whitespace-pre-line leading-relaxed select-text select-all-target selection:bg-[#6366F1]/40"
+                            style={{ overflowWrap: 'break-word', wordBreak: 'break-word', overflowX: 'hidden', maxWidth: '100%' }}
+                          >
+                            {msg.body}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );

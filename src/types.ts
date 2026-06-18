@@ -6,6 +6,7 @@ export interface EmailMessage {
   senderEmail: string;
   time: string;
   body: string;
+  bodyHtml?: string | null;
 }
 
 export interface Email {
