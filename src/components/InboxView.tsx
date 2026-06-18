@@ -336,7 +336,7 @@ export default function InboxView({ emails, setEmails, onComposeReply, isAuthent
                         {msg.bodyHtml ? (
                           <iframe
                             srcDoc={`<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><base target="_blank">
 <style>
   body { margin: 0; padding: 12px 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1f2937; background: #ffffff; word-wrap: break-word; overflow-wrap: break-word; }
   a { color: #1a73e8; text-decoration: none; }
@@ -349,7 +349,7 @@ export default function InboxView({ emails, setEmails, onComposeReply, isAuthent
   h1,h2,h3 { color: #111827; }
 </style>
 </head><body>${msg.bodyHtml.replace(/<script[\s\S]*?<\/script>/gi, '')}</body></html>`}
-                            sandbox="allow-same-origin"
+                            sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
                             className="w-full border-0"
                             style={{ minHeight: '120px', maxHeight: '600px', overflow: 'auto', borderRadius: '6px', background: '#ffffff' }}
                             onLoad={(e) => {
