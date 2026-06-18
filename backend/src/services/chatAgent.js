@@ -62,7 +62,7 @@ export async function processMessage(accountId, conversationId, userMessage) {
 
   try {
     // Detect if this is a newsletter/news digest query
-    const isNewsQuery = detectNewsletterQuery(sanitized);
+    const isNewsQuery = await detectNewsletterQuery(sanitized);
 
     if (isNewsQuery) {
       // Specialized newsletter intelligence pipeline
@@ -244,16 +244,44 @@ function generateErrorResponse(error) {
 /**
  * Detect if the user's question is about newsletters or news digests.
  */
-function detectNewsletterQuery(message) {
+/**
+ * Detect query intent using LLM (with keyword fallback).
+ * Uses NIM for cheap, fast classification instead of fragile regex.
+ */
+async function detectNewsletterQuery(message) {
+  // Fast keyword pre-check (catches obvious cases without LLM call)
   const lower = message.toLowerCase();
-  const newsPatterns = [
-    /\bnews\b/, /\bnewsletter/, /\bdigest\b/, /\bheadline/, /\btech.*news/,
-    /\blatest.*news/, /\brecent.*news/, /\bimportant.*news/, /\btop.*stories/,
-    /\bwhat.*happened/, /\bwhat's.*new/, /\bupdates.*from/, /\bnews.*items/,
-    /\bnews.*past/, /\bnews.*last/, /\bnews.*week/, /\bnews.*days/,
-    /\btrending/, /\bbreaking/, /\bannouncement/,
+  const obviousNewsPatterns = [
+    /\bnewsletter/, /\bdigest\b/, /\btop.*stories/, /\bnews.*items/,
   ];
-  return newsPatterns.some(p => p.test(lower));
+  if (obviousNewsPatterns.some(p => p.test(lower))) return true;
+
+  // LLM-based intent classification for ambiguous queries
+  try {
+    const result = await aiGenerate('classify', {
+      prompt: `Classify this user question about their email inbox. Is it asking about newsletters/news/subscriptions/digests, or is it a general email query?
+
+Question: "${message}"
+
+Respond with exactly one word: NEWSLETTER or GENERAL`,
+      opts: { temperature: 0, maxTokens: 10 },
+    });
+    
+    const intent = (result || '').trim().toUpperCase();
+    if (intent.includes('NEWSLETTER')) return true;
+  } catch (err) {
+    logger.warn(`[ChatAgent] Intent detection failed, using keyword fallback: ${err.message}`);
+    // Fall back to broader keyword matching
+    const fallbackPatterns = [
+      /\bnews\b/, /\bheadline/, /\btech.*news/, /\blatest.*news/,
+      /\brecent.*news/, /\bwhat.*happened/, /\bwhat's.*new/,
+      /\bupdates.*from/, /\btrending/, /\bbreaking/, /\bannouncement/,
+      /\bsubscription/, /\bweekly.*update/, /\bdaily.*brief/,
+    ];
+    return fallbackPatterns.some(p => p.test(lower));
+  }
+
+  return false;
 }
 
 /**
