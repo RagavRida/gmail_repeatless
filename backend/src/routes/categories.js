@@ -44,14 +44,20 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 /**
  * POST /api/categories/run
- * Manually trigger batch categorization for all uncategorized messages.
+ * Trigger batch categorization. Pass ?reset=true to re-categorize all messages.
  */
 router.post('/run', requireAuth, async (req, res, next) => {
   try {
     const accountId = req.accountId;
-    
-    // Count uncategorized first
     const db = getSupabase();
+
+    // Optional: reset all categories to re-classify with improved prompt
+    if (req.query.reset === 'true') {
+      await db.from('messages').update({ category: 'uncategorized' }).eq('account_id', accountId);
+      await db.from('threads').update({ category: 'uncategorized' }).eq('account_id', accountId);
+      logger.info(`[Categories] Reset all categories for account ${accountId}`);
+    }
+    
     const { count } = await db.from('messages')
       .select('id', { count: 'exact', head: true })
       .eq('account_id', accountId)
@@ -65,8 +71,8 @@ router.post('/run', requireAuth, async (req, res, next) => {
 
     // Run in background
     batchCategorize(accountId)
-      .then((n) => logger.info(`Manual categorization completed: ${n} messages`))
-      .catch((err) => logger.error(`Manual categorization failed: ${err.message}`));
+      .then((n) => logger.info(`Categorization completed: ${n} messages`))
+      .catch((err) => logger.error(`Categorization failed: ${err.message}`));
   } catch (error) {
     next(error);
   }

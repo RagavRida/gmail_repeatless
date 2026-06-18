@@ -30,16 +30,22 @@ Thread Summary:`.trim(),
   // CATEGORIZATION
   // ============================================================
   categorize: (subject, from, snippet) => `
-Classify this email into exactly ONE of these categories. Respond with ONLY the category name, nothing else.
+Classify this email into exactly ONE category. Respond with ONLY the category name (one word), nothing else.
 
 Categories:
-- newsletter (subscription-based content, digests, tech news)
-- job_recruitment (job applications, offers, rejections, interview requests)
-- finance (invoices, receipts, bank alerts, payments, billing)
-- notifications (system alerts, OTPs, platform updates, deployment alerts)
-- personal (direct human-to-human personal communication)
-- work_professional (project discussions, team communication, work meetings)
-- uncategorized (does not fit any above)
+- newsletter — Subscription content, digests, blogs, tech news, product updates from companies. Examples: Substack posts, TLDR newsletter, Product Hunt digest, Medium recommendations, company blogs, marketing emails from SaaS products.
+- job_recruitment — Job applications, offers, rejections, interview scheduling, recruiter outreach. Examples: "Your application to X", LinkedIn job alerts, "Interview confirmation", offer letters.
+- finance — Money-related: invoices, receipts, bank alerts, payment confirmations, billing, subscriptions charges. Examples: Razorpay receipts, bank OTPs about transactions, "Payment received", Stripe invoices, credit card statements.
+- notifications — Automated system alerts: OTPs, verification codes, login alerts, deployment status, CI/CD, GitHub notifications, app notifications. Examples: "Your OTP is", "New sign-in detected", GitHub PR notifications, Vercel deployment status, Google security alerts.
+- personal — Direct human-to-human personal communication, friends, family, casual conversations. Examples: emails from friends/family with personal greetings, trip planning with friends, birthday wishes.
+- work_professional — Work/project discussions, team communication, meeting invites, client emails, professional collaboration. Examples: Google Calendar invites, Slack notifications about work channels, project updates from colleagues, client communications.
+
+Rules:
+- Marketing emails from companies → newsletter (NOT notifications)
+- OTP/verification codes → notifications (NOT finance)  
+- Payment receipts → finance (NOT notifications)
+- GitHub/deployment alerts → notifications (NOT work_professional)
+- If truly unclear → uncategorized
 
 Email:
 Subject: ${subject}

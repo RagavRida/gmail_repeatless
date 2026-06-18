@@ -137,26 +137,67 @@ async function propagateThreadCategories(accountId) {
  * Normalize and validate category string from AI output.
  */
 function normalizeCategory(raw) {
-  // Direct match
-  if (CATEGORIES.includes(raw)) return raw;
+  // Clean LLM output: strip quotes, periods, extra text
+  let cleaned = raw
+    .replace(/['"`.]/g, '')
+    .replace(/^(the\s+)?category\s+(is|:)\s*/i, '')
+    .replace(/\s*\(.*\)/, '')
+    .trim()
+    .toLowerCase();
 
-  // Common variations
+  // Direct match
+  if (CATEGORIES.includes(cleaned)) return cleaned;
+
+  // Common variations and aliases
   const aliases = {
     'job': 'job_recruitment',
+    'jobs': 'job_recruitment',
     'recruitment': 'job_recruitment',
+    'job recruitment': 'job_recruitment',
     'job_recruitment': 'job_recruitment',
+    'career': 'job_recruitment',
+    'hiring': 'job_recruitment',
     'work': 'work_professional',
     'professional': 'work_professional',
+    'work professional': 'work_professional',
     'work_professional': 'work_professional',
+    'meeting': 'work_professional',
+    'project': 'work_professional',
     'notification': 'notifications',
     'notifications': 'notifications',
+    'alert': 'notifications',
+    'alerts': 'notifications',
+    'otp': 'notifications',
+    'verification': 'notifications',
+    'security': 'notifications',
     'newsletter': 'newsletter',
     'newsletters': 'newsletter',
+    'news': 'newsletter',
+    'digest': 'newsletter',
+    'subscription': 'newsletter',
+    'marketing': 'newsletter',
+    'promotional': 'newsletter',
+    'promo': 'newsletter',
     'finance': 'finance',
     'financial': 'finance',
     'billing': 'finance',
+    'payment': 'finance',
+    'invoice': 'finance',
+    'receipt': 'finance',
+    'transaction': 'finance',
+    'banking': 'finance',
     'personal': 'personal',
+    'social': 'personal',
+    'family': 'personal',
+    'friend': 'personal',
   };
 
-  return aliases[raw] || 'uncategorized';
+  if (aliases[cleaned]) return aliases[cleaned];
+
+  // Fuzzy: check if any alias is contained in the response
+  for (const [alias, category] of Object.entries(aliases)) {
+    if (cleaned.includes(alias)) return category;
+  }
+
+  return 'uncategorized';
 }
