@@ -313,6 +313,48 @@ User Question
 | **Source attribution** | Every response includes citations. Users can verify claims against the original emails. |
 | **Input sanitization** | User messages are trimmed to 2000 characters. This prevents prompt injection via extremely long inputs. |
 
+### 3.6 LLM Guardrails
+
+The platform implements a **5-layer guardrail framework** (`guardrails.js`) that wraps all AI operations:
+
+```
+User Input → [INPUT GUARDRAILS] → LLM → [OUTPUT GUARDRAILS] → User
+                   │                              │
+                   ├─ Prompt injection detection   ├─ PII masking (SSN, cards, passwords)
+                   ├─ Off-topic/harmful detection  ├─ Hallucination indicator detection
+                   ├─ Input length enforcement     ├─ Output length capping
+                   └─ PII warning (compose only)   └─ Grounding check (term overlap)
+                                                          │
+                                                   [COMPOSE GUARDRAILS]
+                                                          │
+                                                          ├─ Impersonation detection
+                                                          ├─ Social engineering detection
+                                                          └─ PII in outgoing email warning
+```
+
+**Layer 1 — Input Guardrails (pre-LLM):**
+- 12+ regex patterns detect prompt injection attempts ("ignore previous instructions", "you are now a...", "reveal your system prompt")
+- Off-topic requests detected ("write me malware", "help me scam", "generate fake email")
+- **Blocked inputs** return a polite refusal without calling the LLM — saves quota and prevents misuse
+
+**Layer 2 — Output Guardrails (post-LLM):**
+- **PII masking**: SSN, credit card numbers, passwords, and API keys are replaced with `[REDACTED]` in AI responses
+- **Hallucination detection**: Phrases like "as an AI language model" or "my training data" indicate the model broke character
+- **Grounding check**: For chat responses, at least 15% of response terms must appear in the retrieved email context (lightweight term-overlap proxy for true grounding)
+
+**Layer 3 — Compose Guardrails:**
+- **Social engineering prevention**: Blocks drafts containing wire transfer requests, credential phishing, or urgent verify-your-account language
+- **Impersonation detection**: Warns when draft claims to be from CEO/manager/supervisor
+- **PII warnings**: Flags outgoing emails that contain sensitive data patterns
+
+**Layer 4 — Audit Logging:**
+- All guardrail events (blocked, warned, flagged) are logged with timestamps and violation types via `logGuardrailEvent()`
+- Enables post-incident analysis and pattern detection
+
+**Layer 5 — Category Validation:**
+- Classification outputs are validated against the 7 allowed categories
+- Invalid categories fall through to `normalizeCategory()` which applies alias mapping before defaulting to `uncategorized`
+
 ---
 
 ## 4. Gmail API Strategy

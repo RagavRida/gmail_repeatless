@@ -8,6 +8,7 @@ import { aiGenerate } from '../ai/router.js';
 import { PROMPTS } from '../ai/prompts/index.js';
 import { getSupabase } from '../db/client.js';
 import { logger } from '../middleware/logger.js';
+import { validateInput, validateOutput, validateComposedEmail, getRefusalMessage, logGuardrailEvent } from './guardrails.js';
 
 /**
  * Generate a new email draft from a prompt.
@@ -18,12 +19,33 @@ import { logger } from '../middleware/logger.js';
 export async function composeDraft(accountId, { prompt, tone, recipient, subject: userSubject }) {
   const db = getSupabase();
 
+  // ── INPUT GUARDRAILS ──
+  const inputCheck = validateInput(prompt, 'compose');
+  if (!inputCheck.safe) {
+    logGuardrailEvent('INPUT_BLOCKED', { context: 'compose', violations: inputCheck.violations });
+    throw new Error(getRefusalMessage(inputCheck.violations));
+  }
+
   // Generate email body
-  const bodyPrompt = PROMPTS.composeNew(prompt, tone);
-  const body = await aiGenerate('generate', {
+  const bodyPrompt = PROMPTS.composeNew(inputCheck.sanitized, tone);
+  let body = await aiGenerate('generate', {
     prompt: bodyPrompt,
     opts: { temperature: 0.5, maxTokens: 800 },
   });
+
+  // ── OUTPUT GUARDRAILS ──
+  const outputCheck = validateOutput(body, 'compose');
+  body = outputCheck.filtered;
+
+  // ── COMPOSE SAFETY CHECK ──
+  const composeCheck = validateComposedEmail(body, userSubject);
+  if (!composeCheck.safe) {
+    logGuardrailEvent('COMPOSE_BLOCKED', { context: 'compose', violations: composeCheck.violations });
+    throw new Error('The generated email was flagged for safety concerns. Please rephrase your request.');
+  }
+  if (composeCheck.warnings.length > 0) {
+    logGuardrailEvent('COMPOSE_WARNING', { context: 'compose', warnings: composeCheck.warnings });
+  }
 
   // Generate subject if not provided
   let subject = userSubject;
@@ -71,11 +93,28 @@ export async function composeReply(accountId, threadId, { prompt, tone }) {
     throw new Error(`No messages found in thread ${threadId}`);
   }
 
-  const replyPrompt = PROMPTS.composeReply(prompt, tone, messages);
-  const body = await aiGenerate('generate', {
+  // ── INPUT GUARDRAILS ──
+  const inputCheck = validateInput(prompt, 'compose');
+  if (!inputCheck.safe) {
+    logGuardrailEvent('INPUT_BLOCKED', { context: 'reply', violations: inputCheck.violations });
+    throw new Error(getRefusalMessage(inputCheck.violations));
+  }
+
+  const replyPrompt = PROMPTS.composeReply(inputCheck.sanitized, tone, messages);
+  let body = await aiGenerate('generate', {
     prompt: replyPrompt,
     opts: { temperature: 0.5, maxTokens: 800 },
   });
+
+  // ── OUTPUT GUARDRAILS ──
+  const outputCheck = validateOutput(body, 'compose');
+  body = outputCheck.filtered;
+
+  const composeCheck = validateComposedEmail(body, messages[0].subject);
+  if (!composeCheck.safe) {
+    logGuardrailEvent('COMPOSE_BLOCKED', { context: 'reply', violations: composeCheck.violations });
+    throw new Error('The generated reply was flagged for safety concerns. Please rephrase your request.');
+  }
 
   // Store as draft
   const { data: draft } = await db.from('drafts').insert({

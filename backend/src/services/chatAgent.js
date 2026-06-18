@@ -11,6 +11,7 @@ import { aiGenerate, aiEmbed } from '../ai/router.js';
 import { PROMPTS } from '../ai/prompts/index.js';
 import { getSupabase } from '../db/client.js';
 import { logger } from '../middleware/logger.js';
+import { validateInput, validateOutput, getRefusalMessage, logGuardrailEvent } from './guardrails.js';
 
 /**
  * Process a user message in a chat conversation.
@@ -22,15 +23,27 @@ import { logger } from '../middleware/logger.js';
 export async function processMessage(accountId, conversationId, userMessage) {
   const db = getSupabase();
 
-  // ── Input validation & sanitization ──
-  if (!userMessage || typeof userMessage !== 'string') {
-    return gracefulResponse(db, conversationId, 'Please type a message to get started!', userMessage);
+  // ── INPUT GUARDRAILS ──
+  const inputCheck = validateInput(userMessage, 'chat');
+  
+  if (!inputCheck.safe) {
+    const refusal = getRefusalMessage(inputCheck.violations);
+    logGuardrailEvent('INPUT_BLOCKED', {
+      context: 'chat',
+      violations: inputCheck.violations,
+      inputPreview: (userMessage || '').substring(0, 100),
+    });
+    return gracefulResponse(db, conversationId, refusal, userMessage);
   }
 
-  // Trim and limit length (prevent prompt injection via massive inputs)
-  const sanitized = userMessage.trim().substring(0, 2000);
-  if (sanitized.length < 2) {
-    return gracefulResponse(db, conversationId, 'Could you provide a bit more detail? I need at least a few words to search your emails.', sanitized);
+  const sanitized = inputCheck.sanitized;
+
+  // Log any non-blocking warnings
+  if (inputCheck.violations.length > 0) {
+    logGuardrailEvent('INPUT_WARNING', {
+      context: 'chat',
+      violations: inputCheck.violations,
+    });
   }
 
   // Save user message
@@ -94,7 +107,7 @@ export async function processMessage(accountId, conversationId, userMessage) {
         content = generateNoResultsResponse(sanitized, filters);
       } else {
         const prompt = PROMPTS.chatSynthesis(sanitized, contextBlocks, conversationHistory);
-        content = await aiGenerate('generate', {
+        let rawContent = await aiGenerate('generate', {
           prompt,
           opts: {
             systemInstruction: 'You are an AI email assistant. Answer questions exclusively from the user\'s emails. Always cite sources. Never hallucinate. If the provided emails don\'t contain the answer, say so clearly.',
@@ -102,6 +115,17 @@ export async function processMessage(accountId, conversationId, userMessage) {
             maxTokens: 1500,
           },
         });
+
+        // ── OUTPUT GUARDRAILS ──
+        const outputCheck = validateOutput(rawContent, 'chat', { contextBlocks });
+        content = outputCheck.filtered;
+
+        if (outputCheck.violations.length > 0) {
+          logGuardrailEvent('OUTPUT_FLAGGED', {
+            context: 'chat',
+            violations: outputCheck.violations,
+          });
+        }
       }
 
       // Build sources/citations from retrieved context
