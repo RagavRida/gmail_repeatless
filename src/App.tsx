@@ -6,7 +6,7 @@ import ComposeView from './components/ComposeView';
 import CategoriesView from './components/CategoriesView';
 import NewsletterDigest from './components/NewsletterDigest';
 
-import { DUMMY_EMAILS, DUMMY_CHAT_HISTORY, DUMMY_NEWSLETTERS } from './dummyData';
+import { DUMMY_EMAILS, DUMMY_CHAT_HISTORY } from './dummyData';
 import { Email, ChatSession, NewsletterItem } from './types';
 import * as api from './api';
 
@@ -14,7 +14,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('inbox');
   const [emails, setEmails] = useState<Email[]>(DUMMY_EMAILS);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>(DUMMY_CHAT_HISTORY);
-  const [newsletters, setNewsletters] = useState<NewsletterItem[]>(DUMMY_NEWSLETTERS);
+  const [newsletters, setNewsletters] = useState<NewsletterItem[]>([]);
   
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);

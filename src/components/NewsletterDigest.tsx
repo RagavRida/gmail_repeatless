@@ -11,14 +11,16 @@ interface NewsletterDigestProps {
 export default function NewsletterDigest({ newsletters: initialNewsletters, isAuthenticated }: NewsletterDigestProps) {
   const [onlyDeduplicated, setOnlyDeduplicated] = useState(false);
   const [newsletters, setNewsletters] = useState<NewsletterItem[]>(initialNewsletters);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
+      setLoading(true);
       api.getNewsletterDigest(7).then((result) => {
         if (result.items && result.items.length > 0) {
           setNewsletters(result.items);
         }
-      }).catch(console.error);
+      }).catch(console.error).finally(() => setLoading(false));
     }
   }, [isAuthenticated]);
 
@@ -44,7 +46,7 @@ export default function NewsletterDigest({ newsletters: initialNewsletters, isAu
           </div>
 
           <div className="text-[10px] text-gray-500 font-mono">
-            Analyzed: 3 subscriptions
+            {loading ? 'Processing...' : `${new Set(newsletters.flatMap(n => n.sources)).size || 0} sources analyzed`}
           </div>
         </div>
 
@@ -83,9 +85,17 @@ export default function NewsletterDigest({ newsletters: initialNewsletters, isAu
 
         {/* LIST OF NEWS ITEMS */}
         <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-4" id="digest-news-scroller">
-          {displayedItems.length === 0 ? (
-            <div className="p-12 text-center text-gray-500 font-sans text-sm">
-              No articles match this active synthesis filter.
+          {loading ? (
+            <div className="p-12 text-center text-gray-500 font-sans text-sm flex flex-col items-center gap-3">
+              <div className="w-6 h-6 border-2 border-[#22D3EE] border-t-transparent rounded-full animate-spin" />
+              Processing newsletter emails...
+            </div>
+          ) : displayedItems.length === 0 ? (
+            <div className="p-12 text-center text-gray-500 font-sans text-sm flex flex-col items-center gap-2">
+              <Newspaper size={32} className="text-gray-700 mb-2" />
+              {newsletters.length === 0 
+                ? 'No newsletters found yet. Emails categorized as "newsletter" will appear here after AI processing.' 
+                : 'No articles match this active synthesis filter.'}
             </div>
           ) : (
             displayedItems.map((article) => {
