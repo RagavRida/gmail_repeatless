@@ -8,7 +8,13 @@ export const PROMPTS = {
   // SUMMARIZATION
   // ============================================================
   messageSummary: (subject, from, body) => `
-Summarize the following email in 1-2 concise sentences. Focus on the key action items, decisions, or information conveyed. Do not add information not present in the email.
+Summarize this email in 1-2 concise sentences. Focus on key action items, decisions, or information.
+
+Rules:
+- Be specific — include names, dates, numbers, deadlines when present.
+- Do not add information not in the email.
+- Do not start with "This email" or "The sender".
+- Use active voice.
 
 Subject: ${subject}
 From: ${from}
@@ -17,8 +23,38 @@ ${body}
 
 Summary:`.trim(),
 
+  // Context-aware version: summarizes a message within its thread
+  messageSummaryWithContext: (subject, from, body, precedingMessages) => `
+Summarize this email in 1-2 concise sentences. This message is part of an ongoing conversation — interpret it in context of the preceding messages.
+
+Rules:
+- Be specific — include names, dates, numbers, deadlines when present.
+- Understand references to previous messages (e.g., "sounds good" = agreeing to something specific).
+- Do not add information not in the email.
+- Do not start with "This email" or "The sender".
+- Use active voice.
+
+Thread context (preceding messages, oldest first):
+${precedingMessages.map((m, i) => `[${i + 1}] From: ${m.from_address} — ${(m.body_text || m.snippet || '').substring(0, 200)}`).join('\n')}
+
+Current message to summarize:
+Subject: ${subject}
+From: ${from}
+Body:
+${body}
+
+Summary:`.trim(),
+
   threadSummary: (subject, messages) => `
-Summarize the following email thread as a coherent narrative. Cover the key events, decisions, and current status. Mention specific senders when attributing actions or statements. Interpret each reply in the context of the full conversation.
+Summarize this email thread as a coherent narrative. This is a conversation, not a set of independent emails.
+
+Rules:
+- Cover the key events, decisions, action items, and current status.
+- Attribute actions to specific senders by name.
+- Interpret each reply in context of the full conversation.
+- Highlight any unresolved questions or pending actions.
+- Be concise: 2-4 sentences maximum.
+- Do not list messages individually — synthesize into a narrative.
 
 Thread Subject: ${subject}
 Messages (chronological order):

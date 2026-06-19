@@ -10,12 +10,14 @@ import { logger } from '../middleware/logger.js';
 
 /**
  * Summarize a single message (if not already summarized).
+ * Context-aware: if the message is part of a thread, preceding messages
+ * are passed to the LLM so replies are understood in context.
  */
 export async function summarizeMessage(messageId) {
   const db = getSupabase();
 
   const { data: msg } = await db.from('messages')
-    .select('id, subject, from_address, body_text, snippet, ai_summary')
+    .select('id, thread_id, subject, from_address, body_text, snippet, ai_summary, internal_date')
     .eq('id', messageId)
     .single();
 
@@ -25,11 +27,33 @@ export async function summarizeMessage(messageId) {
   const content = msg.body_text || msg.snippet || '';
   if (!content.trim()) return null;
 
-  const prompt = PROMPTS.messageSummary(msg.subject, msg.from_address, content);
+  let prompt;
+
+  // Check if this message has preceding messages in a thread
+  if (msg.thread_id) {
+    const { data: precedingMessages } = await db.from('messages')
+      .select('from_address, body_text, snippet')
+      .eq('thread_id', msg.thread_id)
+      .lt('internal_date', msg.internal_date)
+      .order('internal_date', { ascending: true })
+      .limit(5); // Last 5 preceding messages for context
+
+    if (precedingMessages && precedingMessages.length > 0) {
+      // Context-aware: this is a reply in a thread
+      prompt = PROMPTS.messageSummaryWithContext(msg.subject, msg.from_address, content, precedingMessages);
+    } else {
+      // First message in thread — no context needed
+      prompt = PROMPTS.messageSummary(msg.subject, msg.from_address, content);
+    }
+  } else {
+    // Standalone message
+    prompt = PROMPTS.messageSummary(msg.subject, msg.from_address, content);
+  }
+
   const summary = await aiGenerate('generate', { prompt, opts: { temperature: 0.2, maxTokens: 200 } });
 
   await db.from('messages').update({ ai_summary: summary }).eq('id', messageId);
-  logger.info(`Summarized message ${messageId}`);
+  logger.info(`Summarized message ${messageId}${msg.thread_id ? ' (context-aware)' : ''}`);
   return summary;
 }
 
