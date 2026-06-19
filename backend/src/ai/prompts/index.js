@@ -116,32 +116,102 @@ Category:`.trim(),
   // COMPOSE
   // ============================================================
   composeNew: (prompt, tone) => `
-Draft a professional email based on the user's instructions below. Return ONLY the email content (no metadata headers like "Subject:" — those will be handled separately).
+You are an expert business communication assistant.
 
-User's instructions: ${prompt}
-Desired tone: ${tone || 'Professional'}
+Write an email using the user's instructions.
 
-Write the email body:`.trim(),
+Rules:
+- Return ONLY the email body.
+- No subject line.
+- Be concise and natural.
+- Avoid AI-generated sounding phrases:
+  - "I hope this email finds you well"
+  - "I wanted to reach out"
+  - "Please let me know if you have any questions"
+  - "Please don't hesitate to contact me"
+  - "I'm writing to inform you"
+- Match the requested tone exactly.
+- Include a clear purpose in the first sentence.
+- Include a clear action or next step when appropriate.
+- Do not include a sign-off or signature — the client appends it automatically.
+- Do not repeat information unnecessarily.
+
+IMPORTANT — Do not invent:
+- dates
+- phone numbers
+- prices or amounts
+- commitments or deadlines
+- meeting times
+- people or company names
+If required information is missing, write the email without those details.
+
+Style:
+Tone: ${tone || 'Professional'}
+
+User Instructions:
+${prompt}
+
+Email:`.trim(),
 
   composeSubject: (prompt, body) => `
-Generate a concise, professional email subject line for the following email. Return ONLY the subject line, nothing else.
+Generate ONE email subject line.
 
-User's intent: ${prompt}
-Email body preview: ${body.substring(0, 200)}
+Rules:
+- Aim for 6-10 words.
+- Prioritize specificity over brevity.
+- Reflect the email's main purpose.
+- No quotation marks.
+- No prefixes like "Subject:" or "Re:".
+- Avoid vague subjects such as:
+  - "Follow Up"
+  - "Checking In"
+  - "Important Update"
+  - "Quick Question"
+  - "Regarding Our Discussion"
+
+User intent:
+${prompt}
+
+Email preview:
+${body.substring(0, 500)}
 
 Subject:`.trim(),
 
   // ============================================================
   // REPLY
   // ============================================================
-  composeReply: (prompt, tone, threadMessages) => `
-Draft a reply to the email thread below based on the user's instructions. The reply should be contextually appropriate given the full conversation history. Return ONLY the reply body.
+  composeReply: (prompt, tone, threadContext) => `
+You are replying inside an existing email conversation.
 
-Thread history (chronological):
-${threadMessages.map((m, i) => `--- Message ${i + 1} ---\nFrom: ${m.from_address || m.sender}\nDate: ${m.internal_date || m.time}\n${m.body_text || m.body || m.snippet || '[no content]'}`).join('\n\n')}
+Rules:
+- Return ONLY the reply body.
+- Use the thread context to inform your reply.
+- Address unanswered questions from the latest message.
+- Continue the conversation naturally.
+- Do not repeat information already known in the thread.
+- Do not summarize the thread.
+- Keep the reply proportional to the message being answered.
+- If the user requested specific points, prioritize them.
+- Default to the user's configured tone below.
+- Only adapt formality level (not mood) from the thread.
+- Do not include a sign-off or signature — the client appends it automatically.
+- Avoid AI clichés like "I hope this finds you well" or "Thank you for reaching out".
 
-User's instructions for the reply: ${prompt}
-Desired tone: ${tone || 'Professional'}
+IMPORTANT — Do not invent:
+- dates
+- phone numbers
+- prices or amounts
+- commitments or deadlines
+- meeting times
+- people or company names
+If required information is missing, write the reply without those details.
+
+${threadContext}
+
+User instructions for the reply:
+${prompt}
+
+Tone: ${tone || 'Professional'}
 
 Reply:`.trim(),
 

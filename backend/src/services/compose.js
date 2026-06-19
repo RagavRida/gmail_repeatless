@@ -11,6 +11,59 @@ import { logger } from '../middleware/logger.js';
 import { validateInput, validateOutput, validateComposedEmail, getRefusalMessage, logGuardrailEvent } from './guardrails.js';
 
 /**
+ * Strip LLM preamble and markdown artifacts from generated email output.
+ * Even with "Return ONLY the email body", models occasionally prepend
+ * "Here is the email:" or wrap in markdown code fences.
+ */
+function cleanEmailOutput(text) {
+  return text
+    .replace(/^(here is|here's|email:|draft:|reply:)[^\n]*\n/i, '')
+    .replace(/```[a-z]*\n?/g, '')
+    .replace(/^["']+|["']+$/g, '')
+    .replace(/\n*(Best regards|Sincerely|Warm regards|Kind regards|Thanks|Cheers|Best),?\n.*/si, '')
+    .trim();
+}
+
+/**
+ * Build thread context for reply prompts.
+ * For threads with >3 messages: summarizes older messages (1 line each)
+ * and keeps only the last 3 verbatim. This prevents token waste and
+ * keeps the model focused on the latest exchange.
+ */
+function buildThreadContext(messages) {
+  const MAX_RECENT = 3;
+
+  const formatMessage = (m, i) => {
+    const from = m.from_address || m.sender || 'Unknown';
+    const date = m.internal_date || m.time || '';
+    const body = m.body_text || m.body || m.snippet || '[no content]';
+    return `--- Message ${i + 1} ---\nFrom: ${from}\nDate: ${date}\n${body}`;
+  };
+
+  if (messages.length <= MAX_RECENT) {
+    // Short thread — pass all messages verbatim
+    const formatted = messages.map((m, i) => formatMessage(m, i)).join('\n\n');
+    return `Thread (${messages.length} messages):\n${formatted}`;
+  }
+
+  // Long thread — summarize older, keep recent verbatim
+  const olderMessages = messages.slice(0, -MAX_RECENT);
+  const recentMessages = messages.slice(-MAX_RECENT);
+
+  const olderSummary = olderMessages.map((m) => {
+    const from = m.from_address || m.sender || 'Unknown';
+    const body = (m.body_text || m.snippet || '').substring(0, 100);
+    return `- ${from}: ${body}...`;
+  }).join('\n');
+
+  const recentFormatted = recentMessages.map((m, i) =>
+    formatMessage(m, olderMessages.length + i)
+  ).join('\n\n');
+
+  return `Thread summary (older messages):\n${olderSummary}\n\nRecent messages (verbatim, newest last):\n${recentFormatted}`;
+}
+
+/**
  * Generate a new email draft from a prompt.
  * @param {string} accountId
  * @param {{ prompt: string, tone?: string, recipient?: string, subject?: string }} params
@@ -32,6 +85,9 @@ export async function composeDraft(accountId, { prompt, tone, recipient, subject
     prompt: bodyPrompt,
     opts: { temperature: 0.5, maxTokens: 800 },
   });
+
+  // ── OUTPUT STRIPPING ──
+  body = cleanEmailOutput(body);
 
   // ── OUTPUT GUARDRAILS ──
   const outputCheck = validateOutput(body, 'compose');
@@ -100,11 +156,17 @@ export async function composeReply(accountId, threadId, { prompt, tone }) {
     throw new Error(getRefusalMessage(inputCheck.violations));
   }
 
-  const replyPrompt = PROMPTS.composeReply(inputCheck.sanitized, tone, messages);
+  // Build thread context with truncation for long threads
+  const threadContext = buildThreadContext(messages);
+
+  const replyPrompt = PROMPTS.composeReply(inputCheck.sanitized, tone, threadContext);
   let body = await aiGenerate('generate', {
     prompt: replyPrompt,
     opts: { temperature: 0.5, maxTokens: 800 },
   });
+
+  // ── OUTPUT STRIPPING ──
+  body = cleanEmailOutput(body);
 
   // ── OUTPUT GUARDRAILS ──
   const outputCheck = validateOutput(body, 'compose');
