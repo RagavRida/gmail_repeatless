@@ -28,11 +28,22 @@ export function buildNewMessage({ to, subject, body, from }) {
  * @param {{ to, subject, body, from?, messageIdHeader, referencesHeaders }} opts
  * @returns {string} base64url-encoded raw message
  */
-export function buildReplyMessage({ to, subject, body, from, messageIdHeader, referencesHeaders }) {
+export function buildReplyMessage({ to, subject, body, from, messageIdHeader, referencesHeaders, inReplyToHeader }) {
+  // Normalize referencesHeaders — could be array, string, or null from DB
+  let refsArray = [];
+  if (Array.isArray(referencesHeaders)) {
+    refsArray = referencesHeaders;
+  } else if (typeof referencesHeaders === 'string' && referencesHeaders.trim()) {
+    refsArray = referencesHeaders.split(/\s+/);
+  }
+
+  // The In-Reply-To header should reference the Message-ID of the message we're replying to
+  const replyTo = messageIdHeader || inReplyToHeader || null;
+
   // Build References chain: original references + the message we're replying to
-  const refs = [...(referencesHeaders || [])];
-  if (messageIdHeader && !refs.includes(messageIdHeader)) {
-    refs.push(messageIdHeader);
+  const refs = [...refsArray];
+  if (replyTo && !refs.includes(replyTo)) {
+    refs.push(replyTo);
   }
 
   const lines = [
@@ -41,7 +52,7 @@ export function buildReplyMessage({ to, subject, body, from, messageIdHeader, re
     `Subject: ${subject.startsWith('Re:') ? subject : `Re: ${subject}`}`,
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
-    ...(messageIdHeader ? [`In-Reply-To: ${messageIdHeader}`] : []),
+    ...(replyTo ? [`In-Reply-To: ${replyTo}`] : []),
     ...(refs.length > 0 ? [`References: ${refs.join(' ')}`] : []),
     '',
     body,

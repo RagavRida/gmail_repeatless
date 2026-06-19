@@ -67,7 +67,7 @@ router.post('/send', requireAuth, async (req, res, next) => {
     if (threadId) {
       // Reply — fetch thread context for proper headers
       const { data: messages } = await db.from('messages')
-        .select('message_id_header, references_header, subject')
+        .select('message_id_header, in_reply_to_header, references_header, subject')
         .eq('thread_id', threadId)
         .order('internal_date', { ascending: false })
         .limit(1);
@@ -79,6 +79,7 @@ router.post('/send', requireAuth, async (req, res, next) => {
         body,
         from: account.google_email,
         messageIdHeader: lastMsg?.message_id_header,
+        inReplyToHeader: lastMsg?.in_reply_to_header,
         referencesHeaders: lastMsg?.references_header || [],
       });
       gmailThreadId = threadId;
