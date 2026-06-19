@@ -93,6 +93,25 @@ export async function processMessage(accountId, conversationId, userMessage) {
         // Continue with empty context — the synthesis will handle it gracefully
       }
 
+      // Step 2.5: Expand retrieved messages to full thread context
+      let threadContexts = [];
+      try {
+        threadContexts = await expandToThreads(accountId, contextBlocks);
+        logger.info(`[ChatAgent] Expanded to ${threadContexts.length} threads`);
+      } catch (expandErr) {
+        logger.warn(`[ChatAgent] Thread expansion failed, falling back to flat messages: ${expandErr.message}`);
+        // Fallback: wrap individual messages as single-message threads
+        threadContexts = contextBlocks.map(c => ({
+          threadId: c.thread_id,
+          subject: c.subject || '(no subject)',
+          category: c.category || null,
+          threadSummary: null,
+          messageCount: 1,
+          messages: [{ id: c.id, from: c.from_address, date: c.internal_date, content: (c.body_text || c.snippet || '').substring(0, 800) }],
+          score: c.score || 0,
+        }));
+      }
+
       // Step 3: Load recent conversation history for context
       let conversationHistory = [];
       try {
@@ -101,16 +120,16 @@ export async function processMessage(accountId, conversationId, userMessage) {
         logger.warn(`[ChatAgent] Failed to load history: ${histErr.message}`);
       }
 
-      // Step 4: Grounded generation with source attribution
-      if (contextBlocks.length === 0) {
+      // Step 4: Grounded generation with thread-aware source attribution
+      if (threadContexts.length === 0) {
         // No relevant emails found — give a helpful response instead of hallucinating
         content = generateNoResultsResponse(sanitized, filters);
       } else {
-        const prompt = PROMPTS.chatSynthesis(sanitized, contextBlocks, conversationHistory);
+        const prompt = PROMPTS.chatSynthesisThreaded(sanitized, threadContexts, conversationHistory);
         let rawContent = await aiGenerate('generate', {
           prompt,
           opts: {
-            systemInstruction: 'You are an AI email assistant. Answer questions exclusively from the user\'s emails. Always cite sources. Never hallucinate. If the provided emails don\'t contain the answer, say so clearly.',
+            systemInstruction: 'You are an AI email assistant. Answer questions exclusively from the user\'s emails. Treat each email thread as a conversation — understand the full context before answering. Always cite which thread and sender your information comes from. Never hallucinate. If the provided emails don\'t contain the answer, say so clearly.',
             temperature: 0.3,
             maxTokens: 1500,
           },
@@ -128,19 +147,21 @@ export async function processMessage(accountId, conversationId, userMessage) {
         }
       }
 
-      // Build sources/citations from retrieved context
-      sources = contextBlocks.map((c) => ({
-        message_id: c.id,
-        thread_id: c.thread_id,
-        subject: c.subject,
-        from_address: c.from_address,
-      }));
+      // Build sources/citations from thread contexts
+      sources = threadContexts.flatMap((t) =>
+        t.messages.map((m) => ({
+          message_id: m.id,
+          thread_id: t.threadId,
+          subject: t.subject,
+          from_address: m.from,
+        }))
+      );
 
-      const citations = contextBlocks.map((c) => ({
-        sender: extractSenderName(c.from_address),
-        senderEmail: extractEmail(c.from_address),
-        subject: c.subject || '(no subject)',
-        time: formatDate(c.internal_date),
+      const citations = threadContexts.map((t) => ({
+        sender: extractSenderName(t.messages[0]?.from || ''),
+        senderEmail: extractEmail(t.messages[0]?.from || ''),
+        subject: t.subject || '(no subject)',
+        time: formatDate(t.messages[t.messages.length - 1]?.date),
       }));
 
       uniqueCitations = deduplicateCitations(citations);
@@ -692,6 +713,83 @@ async function hybridRetrieval(accountId, userMessage, filters) {
   return [...results.values()]
     .sort((a, b) => (b.score || 0) - (a.score || 0))
     .slice(0, 15);
+}
+
+// ================================================================
+// STEP 2.5: Thread Expansion
+// ================================================================
+
+/**
+ * Expand retrieved messages to full thread context.
+ * Groups messages by thread_id, fetches sibling messages and thread summaries.
+ * Returns thread-grouped context blocks for the synthesis prompt.
+ *
+ * Why: A single message from a thread misses conversational context.
+ * If the user asks "what did Sarah say about the cabin trip?", we might
+ * retrieve one reply but miss the original proposal and follow-ups.
+ */
+async function expandToThreads(accountId, retrievedMessages) {
+  const db = getSupabase();
+
+  // Group retrieved messages by thread_id
+  const threadMap = new Map();
+  for (const msg of retrievedMessages) {
+    const tid = msg.thread_id;
+    if (!tid) continue;
+    if (!threadMap.has(tid)) {
+      threadMap.set(tid, { retrievedMessages: [], score: msg.score || 0 });
+    }
+    threadMap.get(tid).retrievedMessages.push(msg);
+    // Keep the highest score for this thread
+    threadMap.get(tid).score = Math.max(threadMap.get(tid).score, msg.score || 0);
+  }
+
+  // Limit to top 8 threads to avoid token explosion
+  const topThreadIds = [...threadMap.entries()]
+    .sort((a, b) => b[1].score - a[1].score)
+    .slice(0, 8)
+    .map(([tid]) => tid);
+
+  const threadContexts = [];
+
+  for (const threadId of topThreadIds) {
+    try {
+      // Fetch all messages in this thread (chronological)
+      const { data: allMessages } = await db.from('messages')
+        .select('id, from_address, internal_date, body_text, snippet, subject')
+        .eq('thread_id', threadId)
+        .eq('account_id', accountId)
+        .order('internal_date', { ascending: true });
+
+      // Fetch thread-level summary and metadata
+      const { data: thread } = await db.from('threads')
+        .select('id, subject, category, ai_summary')
+        .eq('id', threadId)
+        .single();
+
+      if (!allMessages || allMessages.length === 0) continue;
+
+      threadContexts.push({
+        threadId,
+        subject: thread?.subject || allMessages[0]?.subject || '(no subject)',
+        category: thread?.category || null,
+        threadSummary: thread?.ai_summary || null,
+        messageCount: allMessages.length,
+        messages: allMessages.map(m => ({
+          id: m.id,
+          from: m.from_address,
+          date: m.internal_date,
+          content: (m.body_text || m.snippet || '').substring(0, 800),
+        })),
+        score: threadMap.get(threadId).score,
+      });
+    } catch (err) {
+      logger.warn(`[ChatAgent] Failed to expand thread ${threadId}: ${err.message}`);
+    }
+  }
+
+  logger.info(`[ChatAgent] Expanded ${retrievedMessages.length} messages → ${threadContexts.length} threads`);
+  return threadContexts;
 }
 
 /**

@@ -265,6 +265,34 @@ User's question: ${userQuestion}
 
 Answer:`.trim(),
 
+  chatSynthesisThreaded: (userQuestion, threadContexts, conversationHistory) => `
+You are an AI email assistant. Answer the user's question using ONLY the email threads provided below. Follow these rules strictly:
+
+1. ONLY use information from the provided email threads. Do NOT make up or infer information not present.
+2. Treat each thread as a CONVERSATION — understand the full exchange before answering.
+3. CITE your sources: for each fact, state which thread subject and sender it came from.
+4. If multiple threads discuss the same topic, synthesize a coherent answer across threads.
+5. If a thread has a summary, use it for quick understanding but verify details from the messages.
+6. If the answer is NOT in the provided context, say so clearly — do NOT guess or hallucinate.
+7. Be concise but thorough. Use bullet points for lists.
+
+${conversationHistory ? `Recent conversation context:\n${conversationHistory}\n\n` : ''}
+
+Email threads:
+${threadContexts.map((t, i) => `
+═══ Thread ${i + 1}: "${t.subject}" (${t.messageCount} message${t.messageCount > 1 ? 's' : ''}) ═══
+Category: ${t.category || 'uncategorized'}
+${t.threadSummary ? `Thread Summary: ${t.threadSummary}\n` : ''}
+${t.messages.map((m, j) => `  [${j + 1}] From: ${m.from}
+  Date: ${m.date}
+  ${m.content}
+  ---`).join('\n')}
+`).join('\n')}
+
+User's question: ${userQuestion}
+
+Answer:`.trim(),
+
   // ============================================================
   // NEWSLETTER DEDUP
   // ============================================================
