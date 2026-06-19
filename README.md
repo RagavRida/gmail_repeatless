@@ -483,6 +483,67 @@ User Input → [INPUT GUARDRAILS] → LLM → [OUTPUT GUARDRAILS] → User
 | **Compose Safety** | Blocks social engineering, impersonation, phishing language in drafts |
 | **Audit** | Logs all guardrail events with timestamps for post-incident analysis |
 
+### 8. Google Cloud OAuth Verification & Safety
+
+This app accesses Gmail data using [Google OAuth 2.0](https://developers.google.com/identity/protocols/oauth2). Google enforces strict safety requirements for apps requesting sensitive Gmail scopes.
+
+#### Current Status: Testing Mode
+
+The app is currently in **Testing mode** on Google Cloud, which means:
+- Only explicitly added **test users** can authenticate (max 100)
+- Google shows a **"This app isn't verified"** warning screen during login
+- Users must click **"Advanced"** → **"Go to Gmail Repeatless (unsafe)"** to proceed
+- This is **expected and normal** for development — it does NOT mean the app is insecure
+
+#### Required Gmail Scopes
+
+| Scope | Purpose |
+|---|---|
+| `gmail.readonly` | Read emails for sync, summarization, and RAG retrieval |
+| `gmail.send` | Send emails composed via the AI compose feature |
+| `gmail.modify` | Mark emails as read/unread, manage labels |
+| `userinfo.email` | Identify the authenticated user |
+| `userinfo.profile` | Display user avatar and name |
+
+#### Token Security
+
+All OAuth tokens are encrypted at rest using **AES-256-GCM** before storage in Supabase. Even a full database dump reveals nothing useful. See [`crypto.js`](./backend/src/auth/crypto.js) for implementation.
+
+#### Publishing to Production
+
+To remove the "unverified app" warning and allow any Google user to authenticate:
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **OAuth consent screen**
+2. Click **"Publish App"**
+3. Google will require:
+   - A **privacy policy URL** (must be publicly accessible)
+   - A **homepage URL** for the application
+   - **Domain verification** via Google Search Console
+4. Since the app uses **restricted scopes** (`gmail.readonly`, `gmail.send`, `gmail.modify`), Google requires a **security assessment** by a third-party auditor
+5. The review process typically takes **4-6 weeks**
+
+> 📖 Full guide: [Google OAuth App Verification](https://support.google.com/cloud/answer/9110914)
+
+#### How to Add Test Users (For Now)
+
+1. Go to **Google Cloud Console** → **APIs & Services** → **OAuth consent screen**
+2. Scroll to **Test users** → Click **Add Users**
+3. Enter the Gmail address of anyone who needs to use the app
+4. They can now authenticate without verification
+
+---
+
+### Links
+
+| Resource | URL |
+|---|---|
+| **Live App** | [gmailrepeatless.vercel.app](https://gmailrepeatless.vercel.app) |
+| **API Server** | [gmail-repeatless.onrender.com](https://gmail-repeatless.onrender.com) |
+| **GitHub Repo** | [github.com/RagavRida/gmail_repeatless](https://github.com/RagavRida/gmail_repeatless) |
+| **Architecture Doc** | [Architecture.md](./Architecture.md) |
+| **Google OAuth Verification** | [Google Support — App Verification](https://support.google.com/cloud/answer/9110914) |
+| **Gmail API Reference** | [developers.google.com/gmail/api](https://developers.google.com/gmail/api/reference/rest) |
+
 ---
 
 ## AI Model Strategy
